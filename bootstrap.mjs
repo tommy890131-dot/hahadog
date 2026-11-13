@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
@@ -19,3 +19,14 @@ for (const file of ['server.mjs', 'package.json', 'scripts/render-build.sh', 'ap
   if (!existsSync(resolve(file))) throw new Error(`Incomplete source archive: ${file}`);
 }
 console.log('[DEADLINE FOUR] Source restored; starting full Render build.');
+
+// Render runtime caps the game at 2 rooms, but the integration tests spawn four.
+// Override the room limit ONLY for the test process, never for the live game.
+// Serial execution avoids overload on Render Free's limited CPU.
+const renderBuildPath = resolve('scripts/render-build.sh');
+const renderBuild = readFileSync(renderBuildPath, 'utf8');
+const originalTestCommand = 'NODE_ENV=test npm test';
+if (!renderBuild.includes(originalTestCommand)) throw new Error('Expected Render test command not found');
+writeFileSync(renderBuildPath, renderBuild.replace(originalTestCommand,
+  'NODE_ENV=test GAME_MAX_ROOMS=8 node --experimental-strip-types --test --test-concurrency=1 tests/*.test.mjs'));
+console.log('[DEADLINE FOUR] Render tests run serially with test-only room capacity 8; production cap stays 2.');
