@@ -20,13 +20,16 @@ for (const file of ['server.mjs', 'package.json', 'scripts/render-build.sh', 'ap
 }
 console.log('[DEADLINE FOUR] Source restored; starting full Render build.');
 
-// Render runtime caps the game at 2 rooms, but the integration tests spawn four.
-// Override the room limit ONLY for the test process, never for the live game.
-// Serial execution avoids overload on Render Free's limited CPU.
-const renderBuildPath = resolve('scripts/render-build.sh');
-const renderBuild = readFileSync(renderBuildPath, 'utf8');
-const originalTestCommand = 'NODE_ENV=test npm test';
-if (!renderBuild.includes(originalTestCommand)) throw new Error('Expected Render test command not found');
-writeFileSync(renderBuildPath, renderBuild.replace(originalTestCommand,
-  'NODE_ENV=test GAME_MAX_ROOMS=8 node --experimental-strip-types --test --test-concurrency=1 tests/*.test.mjs'));
-console.log('[DEADLINE FOUR] Render tests run serially with test-only room capacity 8; production cap stays 2.');
+// The Render service caps production at 2 rooms. The 4-room stress test
+// requires a larger test-only cap on its own child server, not a global override.
+const concurrencyTestPath = resolve('tests/physics-security-regression.test.mjs');
+const suite = readFileSync(concurrencyTestPath, 'utf8');
+const testMarker = "test('global navigation flow calculations are delegated to a worker and arbitrated across rooms',async()=>{";
+const markerIndex = suite.indexOf(testMarker);
+if (markerIndex < 0) throw new Error('Cannot find multi-room integration test');
+const section = suite.slice(markerIndex);
+const childEnv = "env:{...process.env,HOST:'127.0.0.1',PORT:String(port)}";
+if (!section.includes(childEnv)) throw new Error('Cannot find stress test child-server environment');
+writeFileSync(concurrencyTestPath, suite.slice(0,markerIndex) +
+  section.replace(childEnv, "env:{...process.env,GAME_MAX_ROOMS:'8',HOST:'127.0.0.1',PORT:String(port)}"));
+console.log('[DEADLINE FOUR] Four-room stress test uses room cap 8; production remains capped at 2.');
