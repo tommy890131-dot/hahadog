@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: deadline-four-v392-coop
+    runtime: node
+    region: singapore
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: node bootstrap.mjs && bash scripts/render-build.sh
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: GAME_MAX_ROOMS
+        value: "2"
+      - key: GAME_MAX_ZOMBIES
+        value: "24"
+      - key: GAME_MAX_CONNECTIONS
+        value: "12"
+      - key: WS_IP_LIMIT
+        value: "12"
+      - key: TRUST_PROXY
+        value: "0"

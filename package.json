@@ -1,0 +1,13 @@
+{
+  "name": "deadline-four-render-bootstrap",
+  "private": true,
+  "version": "3.9.2",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0 <23"
+  },
+  "scripts": {
+    "build": "node bootstrap.mjs && bash scripts/render-build.sh",
+    "start": "node server.mjs"
+  }
+}
