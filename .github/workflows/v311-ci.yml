@@ -70,6 +70,7 @@ jobs:
             echo '~~~'
             echo "## Regression test output (tail)"
             echo '~~~'
+            grep -A 25 -B 2 '^not ok' v311-legacy.log 2>/dev/null || true
             tail -n 20 v311-legacy.log 2>/dev/null || true
             echo '~~~'
           } > v311/ci-report.md
