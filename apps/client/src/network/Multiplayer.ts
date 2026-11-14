@@ -17,12 +17,12 @@ export type ServerEvent = {
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
   ok?:boolean;sku?:string;reason?:string;action?:string;weaponId?:string;
   mission?:string;levelId?:string;missionPhase?:string;goal?:number;progress?:number;success?:boolean;classId?:string;
-  defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;kind?:string;defenseId?:number;
+  defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;kind?:string;defenseId?:number;levelLabel?:string;objective?:string;hasNextLevel?:boolean;result?:'won'|'lost'|null;levelIndex?:number;
 };
 export class Multiplayer {
   ws:WebSocket|null=null;
-  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number} = {
-    selfId:'',code:'',hostId:'',phase:'menu',players:[],zombies:[],wave:0,remaining:0,shopRemainingMs:0
+  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number;levelIndex:number;levelLabel:string;result:'won'|'lost'|null} = {
+    selfId:'',code:'',hostId:'',phase:'menu',players:[],zombies:[],wave:0,remaining:0,shopRemainingMs:0,levelIndex:0,levelLabel:'失聯街區',result:null
   };
   onEvent:(event:ServerEvent)=>void=()=>{};
   onStatus:(status:string)=>void=()=>{};
@@ -49,10 +49,24 @@ export class Multiplayer {
           this.session.hostId=msg.hostId||'';
           this.session.players=msg.players||[];
           if(msg.phase) this.session.phase=msg.phase;
+          if(typeof msg.levelIndex==='number')this.session.levelIndex=msg.levelIndex;
+          if(msg.result!==undefined)this.session.result=msg.result;
         }
         if(msg.type==='intermission'){
           this.session.phase='intermission';
           this.session.shopRemainingMs=msg.remainingMs??30000;
+        }
+        if(msg.type==='campaignStart'){
+          this.session.levelIndex=msg.levelIndex??0;
+          this.session.levelLabel=msg.levelLabel||'失聯街區';
+          this.session.result=null;
+          this.session.zombies=[];
+        }
+        if(msg.type==='missionEnd'){
+          this.session.phase='ended';
+          this.session.result=msg.success?'won':'lost';
+          if(typeof msg.levelIndex==='number')this.session.levelIndex=msg.levelIndex;
+          if(msg.levelLabel)this.session.levelLabel=msg.levelLabel;
         }
         if(msg.type==='wave') {
           this.session.wave=msg.wave||1;
@@ -67,7 +81,7 @@ export class Multiplayer {
           this.session.players=msg.players||[];
           this.session.zombies=msg.zombies||[];
         }
-        if(msg.type==='gameOver') this.session.phase='ended';
+        if(msg.type==='gameOver') {this.session.phase='ended';this.session.result='lost';}
         this.onEvent(msg);
       } catch(error){console.warn('Invalid game message',error);}
     };
@@ -82,6 +96,9 @@ export class Multiplayer {
   create(name:string){this.send({type:'create',name});}
   join(code:string,name:string){this.send({type:'join',code,name});}
   start(){this.send({type:'start'});}
+  retryLevel(){this.send({type:'retryLevel'});}
+  nextLevel(){this.send({type:'nextLevel'});}
+  restartCampaign(){this.send({type:'restartCampaign'});}
   move(x:number,z:number,yaw:number,pitch:number,seq:number){this.send({type:'move',x,z,yaw,pitch,seq});}
   dispose(){clearTimeout(this.retry); this.ws?.close();}
 }
