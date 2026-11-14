@@ -163,7 +163,7 @@ export class ShopUI {
         </div></div>
         <div class="shop-header-tools">
           ${safeWindow ? `<div class="shop-round-timer"><span>距離第 ${this.phase === 'intermission' ? '下一' : ''} 波</span><strong data-shop-time>00:${String(Math.ceil(this.remainingMs / 1000)).padStart(2, '0')}</strong></div>` : '<span class="shop-location-badge">安全屋補給系統</span>'}
-          <button class="close-shop" type="button" data-action="close" aria-label="關閉商店">✕ <span>關閉 · B</span></button>
+          <button class="close-shop" type="button" data-action="close" aria-label="關閉商店">✕ <span>關閉</span></button>
         </div>
       </header>
       ${safeWindow ? `<div class="shop-timer-track"><div data-shop-progress style="width:${fill(this.remainingMs, SHOP.intermissionMs)}%"></div></div>` : ''}
