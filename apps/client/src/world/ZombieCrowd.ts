@@ -26,6 +26,13 @@ export class ZombieCrowd {
   private readonly headColors = [0xb2bca9, 0x9f9d83, 0xb5a8a0, 0x9eac9c].map(x=>new THREE.Color(x));
   private readonly bruteColor = new THREE.Color(0x988878);
   private readonly runnerColor = new THREE.Color(0x808b80);
+  private readonly specialColors:Record<string,THREE.Color> = {
+    screamer:new THREE.Color(0xdfb05a),
+    spitter:new THREE.Color(0x5bd183),
+    climber:new THREE.Color(0x8f98d5),
+    juggernaut:new THREE.Color(0xbb7f56),
+    boss:new THREE.Color(0xde4b59),
+  };
   private readonly MAX = 128;
   count = 0;
   detailedCount = 0;
@@ -98,8 +105,8 @@ export class ZombieCrowd {
       this.sphere.center.set(z.x,z.y+1.15,z.z);
       if(!this.frustum.intersectsSphere(this.sphere))continue;
 
-      const brute=z.kind==='brute';
-      const scale=brute?1.29:z.kind==='runner'?.9:1;
+      const brute=z.kind==='brute'||z.kind==='juggernaut'||z.kind==='boss';
+      const scale=z.kind==='boss'?2.15:z.kind==='juggernaut'?1.5:brute?1.29:z.kind==='runner'||z.kind==='climber'?.9:1;
       if(distSq>detailSq){
         this.root.position.set(z.x,z.y,z.z);
         this.root.rotation.set(0,z.facing,0);
@@ -131,9 +138,9 @@ export class ZombieCrowd {
       place('armR',.44,1.08,-.12,-swing-.4,0,.17);
       place('legL',-.175,.41,0,-swing,0,.02);
       place('legR',.175,.41,0,swing,0,-.02);
-      this.meshes.torso.setColorAt(index,brute?this.bruteColor:z.kind==='runner'?this.runnerColor:this.nearColors[z.id%4]);
+      this.meshes.torso.setColorAt(index,this.specialColors[z.kind]??(brute?this.bruteColor:z.kind==='runner'?this.runnerColor:this.nearColors[z.id%4]));
       this.meshes.jacket.setColorAt(index,this.jacketColors[z.id%4]);
-      this.meshes.head.setColorAt(index,this.headColors[z.id%4]);
+      this.meshes.head.setColorAt(index,this.specialColors[z.kind]??this.headColors[z.id%4]);
       index++;
     }
     this.detailedCount=index;
