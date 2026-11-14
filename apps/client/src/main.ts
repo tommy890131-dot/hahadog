@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {AimController,AIM_WEAPONS} from '../../../v311/aim-controller';
+import {BattleExtras} from './game/BattleExtras';
 import { createPostProcessing } from './core/PostProcessing';
 import { AssetManager } from './assets/AssetManager';
 import { configurePhotorealRenderer } from './core/RendererSetup';
@@ -61,7 +62,7 @@ app.innerHTML=`
   <div id="ammo">15 <span>/ ∞</span></div><div id="mode">IDLE</div></div>
 <div id="minimap-wrap" class="hidden"><canvas id="minimap"></canvas><div>城市 180 × 180m · 31 棟開放建築 · 室內樓層與屋頂斜坡</div></div>
 <div id="rescue" class="hidden">長按 E 救援倒地隊友（2 秒）</div><div id="downed" class="hidden">你已倒地 · 等待隊友救援</div>
-<div id="footer">Space 跳躍 · B 商店 · 1/2 武器 · R 換彈 · E 救援 · F8 畫質</div>`;
+<div id="footer">Space 跳躍 · B 商店 · 1/2 武器 · R 換彈 · E 救援 · Q 技能 · G 機槍塔 · H 路障 · F 搜刮 · T 修理 · F8 畫質</div>`;
 
 const get=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const overlay=get<HTMLDivElement>('overlay'),hud=get<HTMLDivElement>('hud'),weaponHud=get<HTMLDivElement>('weapon-hud');
@@ -129,6 +130,11 @@ void visuals.ready.then(ok=>{ if(ok)console.info("[Visuals] Night HDR environmen
 const impacts=new ImpactSystem(scene,{maxDecals:48,decalLifetime:28,maxBloodParticles:180,maxDustParticles:100});
 const shotFx=new ShotImpactBridge(world,impacts,camera);
 const crowd=new ZombieCrowd(scene),teammates=new Teammates(scene);
+const battleExtras=new BattleExtras(scene);
+const interactionHUD=document.createElement('div');
+interactionHUD.style.cssText='position:fixed;bottom:100px;right:20px;color:#eafff8;background:#051d25b8;padding:10px 14px;border:1px solid #407e83;z-index:20;font:600 13px sans-serif;pointer-events:none';
+interactionHUD.textContent='G 機槍塔 ($700)｜H 路障 ($250)｜F 搜刮｜T 修理 ($80)';
+document.body.append(interactionHUD);
 const flashlight=new THREE.SpotLight(0xd8eaff,22,43,Math.PI/7,.48,1.8);
 flashlight.position.set(.15,-.18,-.12);flashlight.castShadow=true;
 flashlight.shadow.mapSize.set(512,512);flashlight.shadow.bias=-.001;
@@ -265,6 +271,14 @@ network.onEvent=(event:ServerEvent)=>{
     missionOverlay.style.display='none';return;
   }
   if(event.type==='skillUsed'){if(event.by===network.session.selfId)alertMessage('職業技能已啟動');return;}
+  if(event.type==='bossAppeared'||event.type==='randomEvent'||event.type==='actionResult'){
+    alertMessage(event.message||'戰場狀態更新');return;
+  }
+  if(event.type==='lootCollected'&&event.by===network.session.selfId){
+    alertMessage(`搜刮成功：${event.rarity??'common'} +${event.credits??0}`);return;
+  }
+  if(event.type==='defenseBuilt'&&event.by===network.session.selfId){alertMessage('防禦設施已部署');return;}
+  if(event.type==='specialAttack'&&event.kind==='screamer'){alertMessage('尖叫者召集屍潮！');return;}
   if(event.type==='joined'){menuMode('lobby');drawLobby();shop.setContext('lobby',0);shop.update(self());return;}
   if(event.type==='room'){drawLobby();shop.update(self());return;}
   if(event.type==='disconnected'){
@@ -292,6 +306,9 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='snapshot'){
     if(network.session.phase==='intermission'){shopRemainingUntil=performance.now()+(event.shopRemainingMs??0);}
     crowd.receive(network.session.zombies);teammates.receive(network.session.players,network.session.selfId);
+    battleExtras.update(event.defenses??[],event.loot??[]);
+    const boss=network.session.zombies.find(z=>z.kind==='boss');
+    interactionHUD.textContent=`G 機槍塔 $700｜H 路障 $250｜F 搜刮｜T 修理 $80${boss?'｜BOSS HP '+Math.ceil(boss.hp)+' / '+Math.ceil(boss.maxHp??1550):''}`;
     if(controller.controls.isLocked)sound.updateEnemies(network.session.zombies,camera.position);
     const p=self();
     if(p){
@@ -403,6 +420,20 @@ renderer.domElement.addEventListener('wheel',event=>{
 },{passive:false});
 window.addEventListener('keydown',event=>{
   if(event.code==='KeyQ'&&!event.repeat&&network.session.phase==='playing'){network.send({type:'skill'});return;}
+  if(['KeyG','KeyH','KeyF','KeyT'].includes(event.code)&&!event.repeat&&network.session.phase==='playing'&&controller.controls.isLocked&&!downed&&!shop.isOpen){
+    if(event.code==='KeyG'||event.code==='KeyH')network.send({type:'buildDefense',kind:event.code==='KeyG'?'turret':'barricade'});
+    if(event.code==='KeyF'){
+      const item=battleExtras.nearestLoot(camera.position.x,controller.footY,camera.position.z);
+      if(item)network.send({type:'collectLoot',id:item.id});
+      else alertMessage('附近沒有可以搜刮的物資');
+    }
+    if(event.code==='KeyT'){
+      const d=battleExtras.nearestDamagedDefense(camera.position.x,controller.footY,camera.position.z);
+      if(d)network.send({type:'repairDefense',id:d.id});
+      else alertMessage('附近沒有可維修的防禦設施');
+    }
+    return;
+  }
   if(event.code==='KeyV'&&!event.repeat&&network.session.phase==='playing'&&performance.now()-lastShove>650){
     lastShove=performance.now();sendPose();network.send({type:'shove'});return;
   }
