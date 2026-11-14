@@ -8,7 +8,8 @@ const categories: Record<Category, { name: string; icon: string; subtitle: strin
   pistol: { name: '手槍', icon: '⌁', subtitle: 'SIDEARMS' },
   smg: { name: '衝鋒槍', icon: '≋', subtitle: 'SUBMACHINE' },
   ar: { name: '突擊步槍', icon: '⟿', subtitle: 'ASSAULT' },
-  lmg: { name: '輕／重機槍', icon: '▱', subtitle: 'SUPPRESSION' }
+  lmg: { name: '輕／重機槍', icon: '▱', subtitle: 'SUPPRESSION' },
+  sniper: { name: '狙擊步槍', icon: '⊕', subtitle: 'PRECISION' }
 };
 const escapeHTML = (value: string): string => value.replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
