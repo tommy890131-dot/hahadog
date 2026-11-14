@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {AimController,AIM_WEAPONS} from '../../../v311/aim-controller';
 import {BattleExtras} from './game/BattleExtras';
+import {BulletTracers} from './effects/BulletTracers';
 import { createPostProcessing } from './core/PostProcessing';
 import { AssetManager } from './assets/AssetManager';
 import { configurePhotorealRenderer } from './core/RendererSetup';
@@ -39,12 +40,25 @@ app.innerHTML=`
     <h2 id="code">-----</h2><div id="roster"></div>
     <button id="start-wave">隊長開始戰鬥</button><p class="hint">四位隊友使用同一網址，輸入房號即可合作。</p></section>
   <section id="battle-entry" class="hidden"><h2>城市已遭感染</h2>
-    <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">每波結束有 30 秒全隊安全採購期 · B 開啟商店</p></section>
+    <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">每波結束有 30 秒的全隊安全採購期。</p></section>
   <section id="game-over" class="hidden"><h2>小隊全員倒地</h2><p id="last-wave"></p><button id="retry">隊長重新開始</button></section>
-  <label class="mouse-sensitivity" for="mouse-sensitivity">滑鼠視角靈敏度 <output id="mouse-sensitivity-value">45%</output>
+  <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel">設定與遊戲說明</button>
+  <section id="settings-panel" class="hidden" aria-label="遊戲設定">
+    <h2>遊戲設定</h2>
+    <label class="mouse-sensitivity" for="mouse-sensitivity">滑鼠視角靈敏度 <output id="mouse-sensitivity-value">45%</output>
     <input id="mouse-sensitivity" type="range" min="15" max="100" step="5" value="45" aria-label="調整滑鼠靈敏度" />
   </label>
-  <p id="notice" class="status"></p><p class="hint">WASD 移動 · Space 跳躍 · Shift 奔跑 · 左鍵射擊 · 右鍵瞄準 · Q 技能 · V 推擊 · R 換彈 · B 商店 · F8 畫質模式 · Tab 戰績</p>
+    <details class="game-guide"><summary>遊戲說明 / 操作方式</summary>
+      <dl>
+        <dt>移動及視角</dt><dd>W A S D 移動、滑鼠轉向、Space 跳躍、Shift 衝刺</dd>
+        <dt>戰鬥及裝備</dt><dd>左鍵開火、右鍵瞄準、狙擊槍開鏡時滾輪切換 4×／8×、R 換彈、1／2 換武器、V 推擊</dd>
+        <dt>合作與職業</dt><dd>Q 職業技能、E 救援隊友、Tab 查看小隊完整戰績</dd>
+        <dt>防禦與搜刮</dt><dd>G 部署機槍塔、H 部署路障、T 修理設施、F 搜刮物資、B 開啟商店</dd>
+        <dt>畫質及暫停</dt><dd>F8 畫質模式、Esc 解除滑鼠鎖定並顯示選單</dd>
+      </dl>
+    </details>
+  </section>
+  <p id="notice" class="status"></p>
   <div id="asset-label" class="status"></div>
 </div></div>
 <div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.11 · SURVIVAL / COOP</small></div>
@@ -54,20 +68,26 @@ app.innerHTML=`
   <div class="stat-label">生命 <span id="hp-value">100 / 100</span></div><div class="stat-track hp-track"><div id="hp-fill"></div></div>
   <div class="stat-label">經驗值 <span id="xp-value">0 / 150 XP</span></div><div class="stat-track xp-track"><div id="xp-fill"></div></div>
   <div id="stats-tip">擊殺殭屍取得金錢 · 每波結束享有 30 秒安全補給</div></div>
-<div id="intermission-banner" class="hidden"><span>屍潮已清除 · 下一波倒數</span><strong id="intermission-countdown">00:30</strong><button id="shop-reopen" type="button">開啟商店 · B</button></div>
+<div id="intermission-banner" class="hidden"><span>屍潮已清除 · 下一波倒數</span><strong id="intermission-countdown">00:30</strong><button id="shop-reopen" type="button">開啟商店</button></div>
 <div id="crosshair" aria-hidden="true"><span class="arm top"></span><span class="arm right"></span><span class="arm bottom"></span><span class="arm left"></span><span class="reticle-dot"></span><span id="hitmarker">×</span></div>
 <div id="critical-vignette" aria-hidden="true"></div>
 <section id="scoreboard" class="hidden" aria-label="小隊戰績"><h2>小隊戰績 · SQUAD STATUS</h2><table><thead><tr><th>玩家</th><th>LV</th><th>武器</th><th>HP / 護甲</th><th>金錢</th><th>擊殺</th></tr></thead><tbody id="scoreboard-rows"></tbody></table><p>放開 TAB 關閉</p></section>
 <div id="weapon-hud" class="hidden"><div id="weapon-name" class="weapon-name">P9 戰術手槍</div>
   <div id="ammo">15 <span>/ ∞</span></div><div id="mode">IDLE</div></div>
 <div id="minimap-wrap" class="hidden"><canvas id="minimap"></canvas><div>城市 180 × 180m · 31 棟開放建築 · 室內樓層與屋頂斜坡</div></div>
-<div id="rescue" class="hidden">長按 E 救援倒地隊友（2 秒）</div><div id="downed" class="hidden">你已倒地 · 等待隊友救援</div>
-<div id="footer">Space 跳躍 · B 商店 · 1/2 武器 · R 換彈 · E 救援 · Q 技能 · G 機槍塔 · H 路障 · F 搜刮 · T 修理 · F8 畫質</div>`;
+<div id="rescue" class="hidden">附近有倒地隊友需要救援</div><div id="downed" class="hidden">你已倒地 · 等待隊友救援</div>
+<div id="footer" class="hidden"></div>`;
 
 const get=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const overlay=get<HTMLDivElement>('overlay'),hud=get<HTMLDivElement>('hud'),weaponHud=get<HTMLDivElement>('weapon-hud');
 const playerHud=get<HTMLDivElement>('player-hud'),mapWrap=get<HTMLDivElement>('minimap-wrap');
 const menu=get<HTMLElement>('main-menu'),lobby=get<HTMLElement>('lobby');
+const settingsPanel=get<HTMLElement>('settings-panel'),settingsToggle=get<HTMLButtonElement>('settings-toggle');
+settingsToggle.onclick=()=>{
+  const open=settingsPanel.classList.contains('hidden');
+  visible(settingsPanel,open);
+  settingsToggle.setAttribute('aria-expanded',String(open));
+};
 const battleEntry=get<HTMLElement>('battle-entry'),gameOver=get<HTMLElement>('game-over');
 const visible=(e:HTMLElement,show:boolean)=>e.classList.toggle('hidden',!show);
 let feedbackDeadline=0;
@@ -95,7 +115,7 @@ missionOverlay.style.cssText='position:fixed;top:92px;left:18px;z-index:20;backg
 document.body.append(missionOverlay);
 const classPicker=document.createElement('div');
 classPicker.style.cssText='margin:12px 0;color:#e5faff';
-classPicker.innerHTML='<label for="v311-class">職業：</label><select id="v311-class"><option value="assault">突擊兵｜火力壓制</option><option value="medic">醫療兵｜戰地急救</option><option value="engineer">工程兵｜防禦補強</option><option value="recon">偵察兵｜弱點標記</option></select><small style="display:block">Q 技能 · 右鍵瞄準 · V 推擊</small>';
+classPicker.innerHTML='<label for="v311-class">職業：</label><select id="v311-class"><option value="assault">突擊兵｜火力壓制</option><option value="medic">醫療兵｜戰地急救</option><option value="engineer">工程兵｜防禦補強</option><option value="recon">偵察兵｜弱點標記</option></select>';
 get<HTMLElement>('lobby').append(classPicker);
 get<HTMLSelectElement>('v311-class').onchange=event=>network.send({type:'selectClass',classId:(event.target as HTMLSelectElement).value});
 const sensitivitySlider=get<HTMLInputElement>('mouse-sensitivity');
@@ -129,11 +149,12 @@ const visuals=configurePhotorealRenderer(renderer,scene);
 void visuals.ready.then(ok=>{ if(ok)console.info("[Visuals] Night HDR environment ready"); });
 const impacts=new ImpactSystem(scene,{maxDecals:48,decalLifetime:28,maxBloodParticles:180,maxDustParticles:100});
 const shotFx=new ShotImpactBridge(world,impacts,camera);
+const tracers=new BulletTracers(scene);
 const crowd=new ZombieCrowd(scene),teammates=new Teammates(scene);
 const battleExtras=new BattleExtras(scene);
 const interactionHUD=document.createElement('div');
 interactionHUD.style.cssText='position:fixed;bottom:100px;right:20px;color:#eafff8;background:#051d25b8;padding:10px 14px;border:1px solid #407e83;z-index:20;font:600 13px sans-serif;pointer-events:none';
-interactionHUD.textContent='G 機槍塔 ($700)｜H 路障 ($250)｜F 搜刮｜T 修理 ($80)';
+interactionHUD.textContent='';interactionHUD.style.display='none';
 document.body.append(interactionHUD);
 const flashlight=new THREE.SpotLight(0xd8eaff,22,43,Math.PI/7,.48,1.8);
 flashlight.position.set(.15,-.18,-.12);flashlight.castShadow=true;
@@ -224,12 +245,31 @@ function updateScoreboard(){
     rows.append(tr);
   }
 }
+function renderSquad(players:PlayerRecord[],selfId:string):void{
+  const fragment=document.createDocumentFragment();
+  for(let i=0;i<4;i++){
+    const p=players[i],card=document.createElement('div');
+    card.className='squad-member'+(p?.downed?' incapacitated':'')+(p?.id===selfId?' self':'');
+    const header=document.createElement('div');header.className='squad-line';
+    const name=document.createElement('strong');name.textContent=p?(p.id===selfId?'● ':'')+p.name:'等待隊友 '+(i+1);
+    const kills=document.createElement('span');kills.className='squad-kills';kills.textContent=p?'擊殺 '+p.kills:'—';
+    header.append(name,kills);
+    const health=document.createElement('div');health.className='squad-hp';
+    const fill=document.createElement('div');fill.className='squad-hp-fill';
+    fill.style.width=p&&!p.downed?Math.max(0,Math.min(100,p.hp/Math.max(1,p.maxHp)*100))+'%':'0%';
+    health.append(fill);
+    const status=document.createElement('span');status.className='squad-status';
+    status.textContent=p?(p.downed?'倒地':Math.ceil(p.hp)+' / '+p.maxHp+' HP'):'尚未加入';
+    card.append(header,health,status);fragment.append(card);
+  }
+  get<HTMLElement>('squad').replaceChildren(fragment);
+}
 function renderHUD(){
   const s=network.session,p=self();
   get<HTMLElement>('mission').textContent=s.phase==='intermission'
     ? `WAVE ${String(s.wave).padStart(2,'0')} COMPLETE · 安全採購期`
     : `WAVE ${String(s.wave).padStart(2,'0')} · ${s.remaining} 隻待清除`;
-  get<HTMLElement>('squad').textContent=s.players.map(v=>`${v.id===s.selfId?'➤ ':''}${v.name} ${v.downed?'倒地':Math.ceil(v.hp)+' HP'}`).join('　｜　');
+  renderSquad(s.players,s.selfId);
   const close=s.players.some(v=>v.id!==s.selfId&&v.downed&&Math.hypot(v.x-camera.position.x,v.z-camera.position.z)<2.6);
   visible(get<HTMLElement>('rescue'),!downed&&s.phase==='playing'&&close);
   visible(get<HTMLElement>('downed'),downed);
@@ -308,7 +348,8 @@ network.onEvent=(event:ServerEvent)=>{
     crowd.receive(network.session.zombies);teammates.receive(network.session.players,network.session.selfId);
     battleExtras.update(event.defenses??[],event.loot??[]);
     const boss=network.session.zombies.find(z=>z.kind==='boss');
-    interactionHUD.textContent=`G 機槍塔 $700｜H 路障 $250｜F 搜刮｜T 修理 $80${boss?'｜BOSS HP '+Math.ceil(boss.hp)+' / '+Math.ceil(boss.maxHp??1550):''}`;
+    interactionHUD.style.display=boss?'block':'none';
+    interactionHUD.textContent=boss?'BOSS · '+Math.ceil(boss.hp)+' / '+Math.ceil(boss.maxHp??1550)+' HP':'';
     if(controller.controls.isLocked)sound.updateEnemies(network.session.zombies,camera.position);
     const p=self();
     if(p){
@@ -342,8 +383,13 @@ network.onEvent=(event:ServerEvent)=>{
     alertMessage(event.ok?`${event.action==='equip'?'已裝備':'購買成功'}：${itemName}`:`商店：${event.reason||'購買失敗'}`);
     return;
   }
+  if(event.type==='turretShot'&&typeof event.defenseId==='number'&&event.from&&event.to){
+    battleExtras.onTurretShot(event.defenseId,event.from,event.to);
+    tracers.spawn(event.from,event.to,'turret');return;
+  }
   if(event.type==='shot'){
     shotFx.onServerShot(event);
+    if(event.from&&event.to)tracers.spawn(event.from,event.to,'gun');
     if(event.by===network.session.selfId&&event.hit){
       combatUI.onConfirmedHit(event.headshot===true);
       sound.playHitmarker(event.headshot===true);
@@ -509,13 +555,13 @@ function frame(){
   combatUI.update(dt,controller.moving,controller.sprinting);
   world.updateShadowFocus(camera.position);
   crowd.render(dt,camera,adaptive.detailDistance,adaptive.visibleDistance);teammates.render(dt);
-  impacts.update(dt);
+  battleExtras.animate(dt);tracers.update(dt);impacts.update(dt);
   renderer.info.reset();
   composer.render(dt);
   adaptive.sample(wallDelta*1000,network.session.phase==='playing'&&controller.controls.isLocked&&!document.hidden);
   if(now-lastPerfUI>=800){
     lastPerfUI=now;
-    get<HTMLElement>('performance').textContent=`${adaptive.budget.fps||'--'} FPS · ${adaptive.modeLabel} · ${crowd.detailedCount} 近 / ${crowd.distantCount} 遠 · ${renderer.info.render.calls} DRAWS · ${impacts.decalCount} DECALS · F8 畫質`;
+    get<HTMLElement>('performance').textContent=`${adaptive.budget.fps||'--'} FPS · ${adaptive.modeLabel} · ${crowd.detailedCount} 近 / ${crowd.distantCount} 遠 · ${renderer.info.render.calls} DRAWS · ${impacts.decalCount} DECALS`;
   }
   if(now-lastMap>180&&network.session.phase==='playing'){
     lastMap=now;const dir=new THREE.Vector3();camera.getWorldDirection(dir);
@@ -532,5 +578,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  sound.dispose();combatUI.dispose();impacts.dispose();visuals.dispose();post.dispose();assets.dispose();
+  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();visuals.dispose();post.dispose();assets.dispose();
 });
