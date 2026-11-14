@@ -79,6 +79,9 @@ export class WeaponViewmodel {
   private recoil = 0;
   private recoilSide = 0;
   private flashRemain = 0;
+  private readonly isMachineGun:boolean;
+  private machineGunCycle=0;
+  private machineGunPulse=0;
   private disposed = false;
 
   constructor(
@@ -88,6 +91,7 @@ export class WeaponViewmodel {
     options: ViewmodelOptions = {}
   ) {
     const tuning = options.tuning ?? V2_RIFLE;
+    this.isMachineGun=tuning.id==='m249'||tuning.id==='pkm';
     this.state = new WeaponState(tuning, options.serverAuthoritative ?? false);
     this.onHudChange = onHudChange;
     this.usesPlaceholder = asset.isPlaceholder;
@@ -183,7 +187,8 @@ export class WeaponViewmodel {
   fire(nowMs = performance.now()): boolean {
     if (!this.state.startFire(nowMs)) return false;
     this.play('Fire');
-    this.recoil = Math.min(0.25, this.recoil + this.state.tuning.recoilKick);
+    this.recoil = Math.min(0.25, this.recoil + this.state.tuning.recoilKick*(this.isMachineGun?1.25:1));
+    if(this.isMachineGun){this.machineGunPulse=1;this.machineGunCycle+=1;}
     this.recoilSide += Math.sin(nowMs * 0.013) * 0.009;
     this.flashRemain = 0.060;
     this.onHudChange();
@@ -234,15 +239,19 @@ export class WeaponViewmodel {
 
     this.recoil = THREE.MathUtils.damp(this.recoil, 0, 10, step);
     this.recoilSide = THREE.MathUtils.damp(this.recoilSide, 0, 12, step);
+    this.machineGunPulse=THREE.MathUtils.damp(this.machineGunPulse,0,14,step);
+    const machineVibration=this.isMachineGun?Math.sin(this.machineGunCycle*2.7)*this.machineGunPulse:0;
     this.recoilRig.position.z = this.recoil;
-    this.recoilRig.rotation.x = -this.recoil * 0.95;
+    this.recoilRig.position.y=this.isMachineGun?machineVibration*.017:0;
+    this.recoilRig.rotation.x = -this.recoil*(this.isMachineGun?1.23:.95);
     this.recoilRig.rotation.y = this.recoilSide;
+    this.recoilRig.rotation.z=this.isMachineGun?machineVibration*.038:0;
 
     this.flashRemain = Math.max(0, this.flashRemain - step);
     const glow = this.flashRemain / 0.060;
     this.muzzleLight.intensity = glow * 12;
     this.muzzleFlash.material.opacity = glow * 0.85;
-    this.muzzleFlash.scale.setScalar(0.6 + glow * 0.75);
+    this.muzzleFlash.scale.setScalar((this.isMachineGun?.85:.6) + glow * (this.isMachineGun?1.02:.75));
   }
 
   dispose(): void {
