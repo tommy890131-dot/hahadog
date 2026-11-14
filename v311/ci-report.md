@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: d79e7548bc9a9d875b0c0b2804a90654a75dd7c9
+Source commit: e585612ad77444ff48a35cefaff5488c386b931a
 Rules: failure
 TypeScript/Vite: success
 Existing game regression: failure
@@ -27,14 +27,14 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.54s[39m
+[32m✓ built in 1.66s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: M249 and PKM have extra viewmodel firing motion and gun flash
 ok 24 - M249 and PKM have extra viewmodel firing motion and gun flash
   ---
-  duration_ms: 0.12106
+  duration_ms: 0.140721
   type: 'test'
   ...
 1..24
@@ -45,7 +45,7 @@ ok 24 - M249 and PKM have extra viewmodel firing motion and gun flash
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4080.984081
+# duration_ms 4117.278343
 ~~~
 ## Regression test output (tail)
 ~~~
@@ -53,7 +53,7 @@ ok 24 - M249 and PKM have extra viewmodel firing motion and gun flash
 # Subtest: Render Blueprint uses one free Singapore Web Service and validates output
 not ok 36 - Render Blueprint uses one free Singapore Web Service and validates output
   ---
-  duration_ms: 0.99544
+  duration_ms: 1.680777
   type: 'test'
   location: '/home/runner/work/hahadog/hahadog/tests/render-deploy.test.mjs:21:1'
   failureType: 'testCodeFailure'
@@ -73,19 +73,19 @@ not ok 36 - Render Blueprint uses one free Singapore Web Service and validates o
 # Subtest: Render capacity environment limits rooms, zombies and connections without changing defaults
 ok 37 - Render capacity environment limits rooms, zombies and connections without changing defaults
   ---
-  duration_ms: 297.92669
+  duration_ms: 307.442661
   type: 'test'
   ...
 # Subtest: server security and movement integrations
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.263452
+  duration_ms: 0.318398
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.511801
+  duration_ms: 0.543697
   type: 'test'
   ...
 1..65
@@ -96,5 +96,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 5975.757325
+# duration_ms 5951.019211
 ~~~
