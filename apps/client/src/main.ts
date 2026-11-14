@@ -41,7 +41,17 @@ app.innerHTML=`
     <button id="start-wave">隊長開始戰鬥</button><p class="hint">四位隊友使用同一網址，輸入房號即可合作。</p></section>
   <section id="battle-entry" class="hidden"><h2>城市已遭感染</h2>
     <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">每波結束有 30 秒的全隊安全採購期。</p></section>
-  <section id="game-over" class="hidden"><h2>小隊全員倒地</h2><p id="last-wave"></p><button id="retry">隊長重新開始</button></section>
+  <section id="game-over" class="hidden" aria-label="關卡結算">
+    <h2 id="result-title">任務結算</h2>
+    <p id="last-wave"></p>
+    <p id="campaign-progress"></p>
+    <div class="campaign-actions">
+      <button id="retry" type="button" class="hidden">重新挑戰本關</button>
+      <button id="next-level" type="button" class="hidden">進入下一關</button>
+      <button id="restart-campaign" type="button" class="hidden">重新開始戰役</button>
+    </div>
+    <p id="campaign-waiting" class="hidden">等待隊長選擇下一步…</p>
+  </section>
   <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings-panel">設定與遊戲說明</button>
   <section id="settings-panel" class="hidden" aria-label="遊戲設定">
     <h2>遊戲設定</h2>
@@ -220,7 +230,25 @@ function drawLobby(){
   const p=network.session.players;
   get<HTMLElement>('roster').textContent=p.map((s,i)=>`${i+1}. ${s.name}${s.id===network.session.hostId?' ★ 隊長':''}`).join('　｜　');
   const isHost=network.session.hostId===network.session.selfId;
-  visible(get<HTMLElement>('start-wave'),isHost);visible(get<HTMLElement>('retry'),isHost);
+  visible(get<HTMLElement>('start-wave'),isHost);
+  if(network.session.phase==='ended')renderCampaignResult();
+}
+function renderCampaignResult():void{
+  const session=network.session;
+  const isHost=session.hostId===session.selfId;
+  const won=session.result==='won';
+  const completed=won&&session.levelIndex>=3;
+  const retry=get<HTMLButtonElement>('retry');
+  const next=get<HTMLButtonElement>('next-level');
+  const restart=get<HTMLButtonElement>('restart-campaign');
+  visible(retry,isHost&&!won);
+  visible(next,isHost&&won&&!completed);
+  visible(restart,isHost&&completed);
+  visible(get<HTMLElement>('campaign-waiting'),!isHost);
+  get<HTMLElement>('result-title').textContent=won?'關卡通關成功！':'任務失敗';
+  get<HTMLElement>('campaign-progress').textContent=won&&!completed
+    ?'下一關：'+(['失聯街區','廢棄醫院','工業封鎖區','最後防線'][session.levelIndex+1]||'下一階段')
+    :completed?'四個關卡已完成！':session.levelLabel+' · 可重新挑戰';
 }
 function enterBattle(){
   if(network.session.phase!=='playing')return;
@@ -293,22 +321,37 @@ function renderHUD(){
 }
 network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
+  if(event.type==='campaignStart'){
+    missionOverlay.style.display='none';
+    battleExtras.update([],[]);
+    get<HTMLElement>('feedback').textContent='';
+    get<HTMLElement>('last-wave').textContent='';
+    get<HTMLElement>('result-title').textContent='任務結算';
+    visible(get<HTMLElement>('intermission-banner'),false);
+    downed=false;primaryHeld=false;lastHudSnapshot=0;
+    alertMessage('第 '+((event.levelIndex??0)+1)+' 關：'+(event.levelLabel||'新關卡')+' · '+(event.objective||''));
+    return;
+  }
   if(event.type==='mission'){
     missionOverlay.style.display='block';
     missionOverlay.dataset.phase=event.missionPhase||'objectives';
-    missionOverlay.textContent=event.missionPhase==='extraction'?'撤離開放｜90 秒內全隊前往安全屋':`第一關 · 失聯街區｜擊殺感染者 ${event.progress||0}/${event.goal||12}`;
+    missionOverlay.textContent=event.missionPhase==='extraction'
+      ?(event.levelLabel||network.session.levelLabel)+'：撤離開放！全隊返回安全屋'
+      :(event.levelLabel||network.session.levelLabel)+'｜擊殺感染者 '+(event.progress||0)+'/'+(event.goal||12);
     if(event.message)alertMessage(event.message);
     return;
   }
   if(event.type==='missionProgress'){
     if(missionOverlay.dataset.phase!=='extraction')
-      missionOverlay.textContent=`第一關 · 失聯街區｜擊殺感染者 ${event.progress||0}/${event.goal||12}`;
+      missionOverlay.textContent=network.session.levelLabel+'｜擊殺感染者 '+(event.progress||0)+'/'+(event.goal||12);
     return;
   }
   if(event.type==='missionEnd'){
-    alertMessage(event.message||'任務結束');controller.controls.unlock();menuMode('over');
+    primaryHeld=false;downed=false;
+    shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);
+    controller.controls.unlock();menuMode('over');
     get<HTMLElement>('last-wave').textContent=event.message||'任務結算';
-    missionOverlay.style.display='none';return;
+    missionOverlay.style.display='none';renderCampaignResult();return;
   }
   if(event.type==='skillUsed'){if(event.by===network.session.selfId)alertMessage('職業技能已啟動');return;}
   if(event.type==='bossAppeared'||event.type==='randomEvent'||event.type==='actionResult'){
@@ -405,14 +448,20 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='downed'&&event.target===network.session.selfId){downed=true;alertMessage('你已倒地！等待隊友救援');}
   if(event.type==='revived'&&event.target===network.session.selfId){downed=false;alertMessage('隊友已將你救起');}
   if(event.type==='gameOver'){
+    primaryHeld=false;
     combatUI.setActive(false);sound.setCriticalHeartbeat(false);
-    shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);controller.controls.unlock();menuMode('over');drawLobby();get<HTMLElement>('last-wave').textContent=`堅持至第 ${event.wave||1} 波 · 小隊總擊殺 ${localKills}`;
+    shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);
+    controller.controls.unlock();menuMode('over');
+    get<HTMLElement>('last-wave').textContent='小隊於第 '+(event.wave||1)+' 波遭到殲滅 · 擊殺 '+localKills;
+    missionOverlay.style.display='none';drawLobby();renderCampaignResult();
   }
 };
 get<HTMLButtonElement>('create').onclick=()=>{void sound.unlock();network.create(get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
 get<HTMLButtonElement>('join').onclick=()=>{void sound.unlock();network.join(get<HTMLInputElement>('room-code').value.trim().toUpperCase(),get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
 get<HTMLButtonElement>('start-wave').onclick=()=>network.start();
-get<HTMLButtonElement>('retry').onclick=()=>network.start();
+get<HTMLButtonElement>('retry').onclick=()=>network.retryLevel();
+get<HTMLButtonElement>('next-level').onclick=()=>network.nextLevel();
+get<HTMLButtonElement>('restart-campaign').onclick=()=>network.restartCampaign();
 get<HTMLButtonElement>('shop-reopen').onclick=()=>{
   if(network.session.phase==='intermission'){shop.open(self());visible(overlay,false);}
 };
