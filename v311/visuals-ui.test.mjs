@@ -39,7 +39,7 @@ test('all player and machine-gun bullets use a pooled moving tracer system',()=>
   assert.match(main,/tracers\.spawn\(event\.from,event\.to,'turret'\)/);
   assert.match(tracers,/private readonly max=36/);
   assert.match(tracers,/new THREE\.InstancedMesh/);
-  assert.match(tracers,/tip\/shot\.travel/);
+  assert.match(tracers,/shot\.age\/shot\.travel/);
   assert.match(main,/tracers\.update\(dt\)/);
   assert.match(main,/tracers\.dispose\(\)/);
 });
