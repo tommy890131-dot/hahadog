@@ -1,0 +1,32 @@
+name: V3.11 unpack source on development branch
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/v3.11-survival
+    paths:
+      - .github/workflows/v311-unpack.yml
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Extract verified original sources
+        run: node bootstrap.mjs
+      - name: Preserve source tree on development branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f server.mjs scripts/ apps/ tests/ packages/ public/ 2>/dev/null || true
+          git add -f package.json package-lock.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "build(v3.11): unpack verified game source for integration"
+            git push origin HEAD:feature/v3.11-survival
+          fi
