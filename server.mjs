@@ -147,6 +147,7 @@ function snapshot(room,now){
 }
 function startMatch(room,{preserveCampaign=false}={}){
   const freshRun=room.phase==='ended';
+  room.runId=(room.runId??0)+1;
   room.lastResult=null;
   room.fields.clear();room.revive.clear();room.damageTimes=[];
   room.pressure=0;room.lastSnapshot=0;room.navCursor=0;room.lastDirectorAt=0;
@@ -351,7 +352,7 @@ try {
     navWorkerBusy = false;
     if (reply.error) { console.warn('[NavigationWorker]', reply.error); navWorkerFailed = true; return; }
     const room = rooms.get(job.code);
-    if (!room || room !== job.room || room.phase !== 'playing' || room.wave !== job.wave) return;
+    if (!room || room !== job.room || room.phase !== 'playing' || room.wave !== job.wave || room.runId !== job.runId) return;
     const p = [...room.players.values()].find(player => player.id === job.playerId);
     if (!p || p.downed || navigation.closest(p.x, p.z, p.y) !== reply.goal) return;
     room.fields.set(p.id, { goal: reply.goal, dist: reply.dist, next: reply.next });
@@ -392,7 +393,7 @@ function scheduleNavigation(now) {
       }
       const id = ++navJobCounter;
       navWorkerBusy = true;
-      navJob = { id, code: room.code, room, wave: room.wave, playerId: p.id };
+      navJob = { id, code: room.code, room, wave: room.wave, runId:room.runId,playerId: p.id };
       try { navWorker.postMessage({ id, x: p.x, y: p.y, z: p.z }); }
       catch (error) {
         console.warn('[NavigationWorker] request failed', error);
@@ -451,6 +452,10 @@ function onMessage(peer,msg){
   if(msg.type==='start'){
     if(peer.id!==room.hostId){send(peer,{type:'error',message:'只有隊長能開始遊戲'});return;}
     if(room.phase==='lobby'||(!V311&&room.phase==='ended'))startMatch(room);
+    return;
+  }
+  if(V311&&process.env.NODE_ENV==='test'&&process.env.TEST_CAMPAIGN_CONTROL==='1'&&msg.type==='testCampaignResult'){
+    if(peer.id===room.hostId&&room.phase==='playing'&&['won','lost'].includes(msg.result))finishCampaign(room,msg.result);
     return;
   }
   if(V311&&['retryLevel','nextLevel','restartCampaign'].includes(msg.type)){
@@ -583,6 +588,16 @@ function onClose(peer){
   if(room.phase==='playing'&&[...room.players.values()].every(p=>p.downed)){
     room.phase='ended';room.lastResult='lost';announce(room,{type:'gameOver',result:'lost',levelIndex:room.levelIndex??0,wave:room.wave});syncLobby(room);}
 }
+function finishCampaign(room,result){
+  if(room.phase==='ended')return;
+  const won=result==='won';
+  room.phase='ended';room.lastResult=won?'won':'lost';
+  room.pending=0;room.zombies=[];room.damageTimes=[];room.fields.clear();room.revive.clear();
+  announce(room,{type:'missionEnd',success:won,result:room.lastResult,levelIndex:room.levelIndex,
+    levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
+    message:won?'小隊成功撤離！':'撤離任務失敗'});
+  syncLobby(room);
+}
 function tick(){
   const now=Date.now();
   for(const room of rooms.values()){
@@ -596,11 +611,7 @@ function tick(){
         setPlayerState(room.survival,p.id,{alive:!p.downed&&p.hp>0,inZone:safe(p)&&Math.abs(p.y)<2});
       const result=stepRound(room.survival,now);
       if(result==='won'||result==='lost'){
-        room.phase='ended';room.lastResult=result==='won'?'won':'lost';
-        announce(room,{type:'missionEnd',success:result==='won',result:room.lastResult,levelIndex:room.levelIndex,
-          levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
-          message:result==='won'?'小隊成功撤離！':'撤離任務失敗'});
-        syncLobby(room);continue;
+        finishCampaign(room,result);continue;
       }
     }
     const players=[...room.players.values()],living=players.filter(p=>!p.downed);
