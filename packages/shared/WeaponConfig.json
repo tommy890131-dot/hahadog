@@ -150,5 +150,24 @@
     "minFactor": 0.58,
     "knockback": 2.55,
     "automatic": true
+  },
+  "sniper_rifle": {
+    "name": "M24 精準狙擊槍",
+    "category": "sniper",
+    "price": 4500,
+    "damage": 135,
+    "rpm": 45,
+    "magazine": 5,
+    "reserve": 40,
+    "recoil": 1.4,
+    "reloadMs": 2600,
+    "penetration": 2,
+    "speedPenalty": 0.16,
+    "spread": 0.35,
+    "falloffStart": 75,
+    "falloffEnd": 180,
+    "minFactor": 0.85,
+    "knockback": 2.8,
+    "automatic": false
   }
 }
