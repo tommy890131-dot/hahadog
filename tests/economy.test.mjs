@@ -7,9 +7,9 @@ import {splitArmorDamage,gainExperience} from '../packages/shared/EconomyRules.m
 const weapons=JSON.parse(fs.readFileSync(new URL('../packages/shared/WeaponConfig.json',import.meta.url),'utf8'));
 const map=JSON.parse(fs.readFileSync(new URL('../packages/shared/MapLayout.json',import.meta.url),'utf8'));
 
-test('exactly eight weapons across the four classes and shared world is enlarged',()=>{
-  assert.equal(Object.keys(weapons).length,8);
-  assert.deepEqual(new Set(Object.values(weapons).map(w=>w.category)),new Set(['pistol','smg','ar','lmg']));
+test('nine weapons across five categories and shared world is enlarged',()=>{
+  assert.equal(Object.keys(weapons).length,9);
+  assert.deepEqual(new Set(Object.values(weapons).map(w=>w.category)),new Set(['pistol','smg','ar','lmg','sniper']));
   assert.equal(map.halfSize,90);assert.ok(map.buildings.length>=40);
   assert.equal(weapons.m4.penetration,2);assert.ok(weapons.m249.magazine>=100);
   assert.equal(weapons.p9.reserve,9999);
