@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: 85aaa85d12aab190474c27dcb46a244842449262
+Source commit: 754c5c2446054c4f42029fe8cd3bf574996c162d
 Rules: success
 TypeScript/Vite: success
 Existing game regression: failure
@@ -20,21 +20,21 @@ transforming...
 rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
-[2mdist/[22m[2massets/[22m[35mindex-Cft-fPrK.css  [39m[1m[2m   21.35 kB[22m[1m[22m[2m │ gzip:   5.89 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-0niY37WO.js   [39m[1m[33m1,698.03 kB[39m[22m[2m │ gzip: 276.59 kB[22m
+[2mdist/[22m[2massets/[22m[35mindex-C7_PBWhh.css  [39m[1m[2m   23.51 kB[22m[1m[22m[2m │ gzip:   6.40 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-C6gPmE5p.js   [39m[1m[33m1,698.03 kB[39m[22m[2m │ gzip: 276.59 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.32s[39m
+[32m✓ built in 2.02s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: V3.11 real WebSocket room supports class, mission, and authoritative defense request
 ok 18 - V3.11 real WebSocket room supports class, mission, and authoritative defense request
   ---
-  duration_ms: 469.606453
+  duration_ms: 488.264678
   type: 'test'
   ...
 1..18
@@ -45,7 +45,7 @@ ok 18 - V3.11 real WebSocket room supports class, mission, and authoritative def
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4040.98418
+# duration_ms 4102.879289
 ~~~
 ## Regression test output (tail)
 ~~~
@@ -53,7 +53,7 @@ ok 18 - V3.11 real WebSocket room supports class, mission, and authoritative def
 # Subtest: Render Blueprint uses one free Singapore Web Service and validates output
 not ok 36 - Render Blueprint uses one free Singapore Web Service and validates output
   ---
-  duration_ms: 1.067611
+  duration_ms: 1.458709
   type: 'test'
   location: '/home/runner/work/hahadog/hahadog/tests/render-deploy.test.mjs:21:1'
   failureType: 'testCodeFailure'
@@ -73,19 +73,19 @@ not ok 36 - Render Blueprint uses one free Singapore Web Service and validates o
 # Subtest: Render capacity environment limits rooms, zombies and connections without changing defaults
 ok 37 - Render capacity environment limits rooms, zombies and connections without changing defaults
   ---
-  duration_ms: 226.166391
+  duration_ms: 324.578175
   type: 'test'
   ...
 # Subtest: server security and movement integrations
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.306061
+  duration_ms: 0.411648
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.462387
+  duration_ms: 0.596802
   type: 'test'
   ...
 1..65
@@ -96,5 +96,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 5450.765881
+# duration_ms 6448.363399
 ~~~
