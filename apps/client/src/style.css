@@ -279,3 +279,37 @@ input{border:1px solid #536875;background:#0b1820;color:#fff;padding:13px;border
   background:#0a202ba8;border-radius:9px;color:#cee2e4;font-size:12px;}
 .mouse-sensitivity input{width:150px;accent-color:#5aefcf;cursor:pointer;}
 .mouse-sensitivity output{min-width:36px;font-variant-numeric:tabular-nums;color:#82efdc;}
+
+/* V3.11: squad tactical status, four synchronized slots, no hotkey wallpaper. */
+#hud{max-width:min(350px,38vw)}
+#squad{display:grid;grid-template-columns:1fr;gap:5px;max-width:320px;margin-top:12px}
+.squad-member{background:#0b1c27de;border:1px solid #4a66736e;border-radius:6px;padding:7px 9px;text-shadow:none;min-height:56px}
+.squad-member.self{border-color:#7acdc0;background:#12383bdf}
+.squad-member.incapacitated{border-color:#c95757;background:#3b1b24dc}
+.squad-line{display:flex;align-items:center;justify-content:space-between;gap:9px;font-size:12px}
+.squad-line strong{min-width:0;max-width:174px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e2f2f0}
+.squad-kills{color:#f4c383;white-space:nowrap;font-weight:750;font-variant-numeric:tabular-nums}
+.squad-hp{height:5px;margin-top:6px;border-radius:3px;overflow:hidden;background:#502c36}
+.squad-hp-fill{height:100%;background:linear-gradient(90deg,#48a976,#9cdf8b);transition:width .15s ease}
+.squad-member.incapacitated .squad-hp-fill{background:#e36168}
+.squad-status{display:block;text-align:right;font-size:10px;color:#b2c4cd;margin-top:3px;font-variant-numeric:tabular-nums}
+#settings-toggle{display:block;margin:12px auto;background:#234450!important;padding:8px 16px!important;font-size:12px}
+#settings-panel{max-height:48vh;overflow:auto;margin:8px auto;padding:14px;border:1px solid #496974;border-radius:9px;background:#0d1c28df;text-align:left;font-size:12px}
+#settings-panel h2{font-size:17px;margin:0 0 7px}
+#settings-panel .mouse-sensitivity{margin:5px 0 12px;max-width:none}
+.game-guide{border-top:1px solid #4e6775;padding-top:11px}
+.game-guide summary{cursor:pointer;color:#a9e9d6;font-size:13px;font-weight:700}
+.game-guide dl{display:grid;grid-template-columns:100px 1fr;column-gap:10px;row-gap:10px;line-height:1.5;margin:12px 0 0}
+.game-guide dt{color:#f6c488;font-weight:700}
+.game-guide dd{margin:0;color:#d7e5e9}
+@media(max-width:720px){
+  #hud{top:9px;left:10px;max-width:55vw}
+  #squad{max-width:205px;gap:3px}
+  .squad-member{padding:5px 6px;min-height:45px}
+  .squad-line{font-size:10px}
+  .squad-line strong{max-width:110px}
+  .squad-status{font-size:9px}
+  #settings-panel{max-height:40vh}
+  .game-guide dl{grid-template-columns:1fr;row-gap:3px}
+  .game-guide dd{margin-bottom:6px}
+}
