@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {createRound,enterPlayer,setPlayerState,completeObjective,stepRound,computeThreat} from './v311/survival-round.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
+import {SPECIALS,DEFENSES,RARITIES,chooseSpecial,bossPhase,lootRarity,validPlacement,claimLoot,canTurretShoot,nextEvent} from './v311/GameplaySystems.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -139,7 +140,9 @@ function snapshot(room,now){
   announce(room,{type:'snapshot',phase:room.phase,wave:room.wave,remaining:room.pending+room.zombies.length,
     shopRemainingMs:room.phase==='intermission'?Math.max(0,room.nextWaveAt-now):0,
     players:[...room.players.values()].map(publicPlayer),
-    zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,kind:z.kind,step:z.step,facing:z.facing}))});
+    zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing})),
+    defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
+    bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0});
 }
 function startMatch(room){
   const freshRun=room.phase==='ended';
@@ -154,6 +157,7 @@ function startMatch(room){
     room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:90000});
     room.survival.extractionZone='safehouse';
     room.missionKills=0;
+    room.defenses=[];room.loot=[];room.bossSpawned=false;room.nextExtraEventAt=Date.now()+45000;room.nextItemId=1;
     for(const p of room.players.values())enterPlayer(room.survival,p.id);
     stepRound(room.survival,Date.now());
     announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:0,missionPhase:'objectives'});
@@ -169,9 +173,17 @@ function rewardKill(room,player,z,headshot){
   player.money=Math.min(1_000_000_000,player.money+money);
   const progress=gainExperience(player.level,player.xp,xp);
   player.level=progress.level;player.xp=progress.xp;player.kills++;
+  if(V311&&room.survival){
+    if(room.loot.length<10&&(z.kind==='boss'||Math.random()<.26)){
+      const rarity=lootRarity(Math.random());
+      const item={id:room.nextItemId++,x:z.x,y:z.y,z:z.z,rarity,claimed:false};
+      room.loot.push(item);
+      announce(room,{type:'lootSpawn',item});
+    }
+  }
   if(V311&&room.survival?.phase==='objectives'){
     room.missionKills=(room.missionKills||0)+1;
-    if(room.missionKills>=12){
+    if(room.missionKills>=12 && room.bossSpawned && !room.zombies.some(z=>z.kind==='boss'&&z.hp>0)){
       completeObjective(room.survival);
       stepRound(room.survival,Date.now());
       announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:12,missionPhase:'extraction',
@@ -301,9 +313,11 @@ function spawnZombie(room){
   }
   if(!pos)return;
   const n=Math.random(),brute=n<Math.min(.025+room.wave*.009,.11),runner=!brute&&n<.22;
-  const kind=brute?'brute':runner?'runner':'walker';
-  room.zombies.push({id:nextZombieId++,x:pos.x,y:0,vy:0,grounded:true,z:pos.z,kind,hp:brute?180:runner?65:90,
-    speed:(brute?1.9:runner?4.4:2.8)+Math.min(room.wave*.1,.8),attackAt:0,step:rnd(0,8),
+  const kind=V311&&Math.random()<.27?chooseSpecial(Math.floor(Math.random()*100),room.wave):brute?'brute':runner?'runner':'walker';
+  const special=SPECIALS[kind];
+  const hp=special?.hp??(brute?180:runner?65:90);
+  room.zombies.push({id:nextZombieId++,x:pos.x,y:0,vy:0,grounded:true,z:pos.z,kind,hp,maxHp:hp,
+    speed:special?.speed??((brute?1.9:runner?4.4:2.8)+Math.min(room.wave*.1,.8)),attackAt:0,abilityAt:0,step:rnd(0,8),
     facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false});
 }
 /**
@@ -445,6 +459,29 @@ function onMessage(peer,msg){
     else p.skillUntil=now+10000;
     announce(room,{type:'skillUsed',by:p.id,classId:p.classId});return;
   }
+  if(V311&&msg.type==='buildDefense'&&room.phase==='playing'&&!p.downed){
+    const kind=msg.kind;
+    const position={x:p.x+Math.sin(p.yaw)*2.6,y:p.y,z:p.z-Math.cos(p.yaw)*2.6};
+    const validation=validPlacement({player:p,position,existing:room.defenses,kind,credits:p.money,
+      solidAt:pos=>!canOccupyAt(pos.x,pos.z,pos.y,.65)});
+    if(!validation.ok){send(peer,{type:'actionResult',message:'無法建造：'+validation.reason});return;}
+    p.money-=validation.cost;
+    const d={id:room.nextItemId++,kind,x:position.x,y:position.y,z:position.z,hp:DEFENSES[kind].hp,maxHp:DEFENSES[kind].hp,nextShotAt:0};
+    room.defenses.push(d);announce(room,{type:'defenseBuilt',defense:d,by:p.id});return;
+  }
+  if(V311&&msg.type==='repairDefense'&&room.phase==='playing'&&!p.downed){
+    const d=room.defenses.find(d=>d.id===msg.id);
+    if(!d||distance2(d,p)>3||Math.abs(d.y-p.y)>1.5||p.money<80||d.hp>=d.maxHp)return;
+    p.money-=80;d.hp=Math.min(d.maxHp,d.hp+90);announce(room,{type:'defenseRepaired',id:d.id,hp:d.hp});return;
+  }
+  if(V311&&msg.type==='collectLoot'&&room.phase==='playing'&&!p.downed){
+    const item=room.loot.find(x=>x.id===msg.id);
+    if(!claimLoot({player:p,item}))return;
+    item.claimed=true;p.money+=RARITIES[item.rarity].credits;
+    room.loot=room.loot.filter(x=>!x.claimed);
+    announce(room,{type:'lootCollected',id:item.id,rarity:item.rarity,by:p.id,credits:RARITIES[item.rarity].credits});
+    return;
+  }
   if(msg.type==='move'&&room.phase==='playing'&&!p.downed){
     if(![msg.x,msg.z,msg.yaw,msg.pitch].every(finite))return;
     const elapsed=now-p.lastMove;
@@ -552,16 +589,64 @@ function tick(){
     if(room.pending>0 && now>=room.nextSpawnAt&&room.zombies.length<MAX_ZOMBIES&&(!V311||computeThreat({activeEnemies:room.zombies.length,cap:Math.min(MAX_ZOMBIES,24),progress:Math.min(1,(room.missionKills||0)/12)}).spawnBudget>0)&&room.directorPhase!=='relax'){
       spawnZombie(room);room.pending--;room.nextSpawnAt=now+Math.max(95,200-room.wave*8);
     }
+    if(V311&&room.survival){
+      if(!room.bossSpawned&&room.missionKills>=8&&room.zombies.length<Math.min(MAX_ZOMBIES,24)){
+        const source=MAP.spawns.find(point=>[...room.players.values()].every(p=>distance2(point,p)>16));
+        if(source){
+          const z={id:nextZombieId++,x:source.x,y:0,vy:0,grounded:true,z:source.z,kind:'boss',hp:SPECIALS.boss.hp,maxHp:SPECIALS.boss.hp,
+            speed:SPECIALS.boss.speed,attackAt:0,abilityAt:0,step:0,facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false,bossPhase:1};
+          room.zombies.push(z);room.bossSpawned=true;announce(room,{type:'bossAppeared',message:'變異巨獸已出現！先擊敗 Boss 才能撤離'});
+        }
+      }
+      for(const d of room.defenses){
+        if(d.kind!=='turret')continue;
+        const z=room.zombies.find(z=>canTurretShoot(d,z,now)&&clearZombieSight({x:d.x,y:d.y,z:d.z},z));
+        if(!z)continue;
+        d.nextShotAt=now+DEFENSES.turret.intervalMs;
+        z.hp-=DEFENSES.turret.damage;
+        announce(room,{type:'turretShot',id:d.id,enemyId:z.id});
+        if(z.hp<=0){z.hp=0;const owner=[...room.players.values()][0];if(owner)rewardKill(room,owner,z,false);}
+      }
+      room.zombies=room.zombies.filter(z=>z.hp>0);
+      if(now>=room.nextExtraEventAt){
+        room.nextExtraEventAt=now+45000;
+        const event=nextEvent(Math.floor(Math.random()*100),room.pressure/100);
+        if(event==='horde')room.pending=Math.min(135,room.pending+12);
+        if(event==='supply_drop'){
+          const p=living[0];if(p&&room.loot.length<10){
+            const item={id:room.nextItemId++,x:p.x+3,y:p.y,z:p.z,rarity:lootRarity(Math.random()),claimed:false};
+            room.loot.push(item);
+          }
+        }
+        announce(room,{type:'randomEvent',event,message:{horde:'新一波屍潮逼近',blackout:'全城停電！',supply_drop:'空投補給已抵達',fog:'濃霧來襲',radio_signal:'收到神秘求救信號'}[event]});
+      }
+    }
     const zombieBuckets=buildZombieBuckets(room.zombies);
     for(const z of room.zombies){
       if(!living.length)break;
+      if(V311&&z.kind==='boss'){
+        z.bossPhase=bossPhase(z.hp,z.maxHp);
+        z.speed=SPECIALS.boss.speed+(z.bossPhase-1)*.45;
+      }
       const target=chooseTarget(room,z,living);
       if(!target)continue;
       const xzDist=distance2(z,target),heightDiff=Math.abs(z.y-target.y);
       const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target);
       if(!canAttack)pursue(room,z,target,TICK_MS/1000,now,zombieBuckets.near(z));
       else if(now>z.attackAt){z.attackAt=now+1100;
-        hurt(room,target,z.kind==='brute'?22:z.kind==='runner'?14:10);}
+        hurt(room,target,SPECIALS[z.kind]?.damage??(z.kind==='brute'?22:z.kind==='runner'?14:10));}
+      if(V311&&(z.kind==='spitter'||z.kind==='screamer'||z.kind==='boss')&&now>=z.abilityAt){
+        const spec=SPECIALS[z.kind];z.abilityAt=now+spec.intervalMs;
+        if(z.kind==='screamer')room.pending=Math.min(135,room.pending+4);
+        if(z.kind==='spitter'&&xzDist<14&&heightDiff<3&&clearZombieSight(z,target))hurt(room,target,spec.damage);
+        if(z.kind==='boss'&&xzDist<8&&heightDiff<2&&clearZombieSight(z,target))hurt(room,target,spec.damage);
+        announce(room,{type:'specialAttack',kind:z.kind,id:z.id});
+      }
+      if(V311&&z.kind==='juggernaut'&&xzDist<2.3&&heightDiff<1.4&&now>=z.abilityAt){
+        z.abilityAt=now+3500;
+        const d=room.defenses.find(d=>distance2(d,z)<3);
+        if(d)d.hp=Math.max(0,d.hp-100);
+      }
     }
     if(now-room.lastDirectorAt>=2000){
       room.lastDirectorAt=now;
@@ -577,6 +662,7 @@ function tick(){
     if(players.length && players.every(p=>p.downed)){
       room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});syncLobby(room);continue;
     }
+    if(V311)room.defenses=room.defenses.filter(d=>d.hp>0);
     if(room.pending===0&&room.zombies.length===0){
       startIntermission(room,now);
       snapshot(room,now);
