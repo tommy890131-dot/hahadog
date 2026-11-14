@@ -1,11 +1,6 @@
 name: V3.11 unpack source on development branch
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/v3.11-survival
-    paths:
-      - .github/workflows/v311-unpack.yml
 permissions:
   contents: write
 jobs:
@@ -19,7 +14,12 @@ jobs:
         with:
           node-version: '22'
       - name: Extract verified original sources
-        run: node bootstrap.mjs
+        run: |
+          if [[ -f server.mjs && -f server/NavigationWorker.mjs && -f apps/client/src/main.ts ]]; then
+            echo 'Sources already committed; skip destructive extraction'
+          else
+            node bootstrap.mjs
+          fi
       - name: Verify extracted sources
         shell: bash
         run: |
