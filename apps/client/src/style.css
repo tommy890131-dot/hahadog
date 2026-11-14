@@ -313,3 +313,11 @@ input{border:1px solid #536875;background:#0b1820;color:#fff;padding:13px;border
   .game-guide dl{grid-template-columns:1fr;row-gap:3px}
   .game-guide dd{margin-bottom:6px}
 }
+
+/* V3.11 chapter results: host choices, shared 4-player mission outcome. */
+#game-over .campaign-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin:14px 0;}
+#game-over #result-title{color:#f1ca93;font-weight:900;letter-spacing:.04em;}
+#game-over #campaign-progress{font-weight:650;color:#add7d2;font-size:14px;}
+#game-over #campaign-waiting{font-size:13px;color:#abbec3;line-height:1.7;}
+#game-over .campaign-actions button{min-width:175px;padding:13px 18px;background:#2c6862;border:1px solid #6fb5a7;}
+#game-over .campaign-actions button:hover{background:#3e8b79;}
