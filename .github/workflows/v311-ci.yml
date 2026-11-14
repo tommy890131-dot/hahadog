@@ -2,6 +2,8 @@ name: V3.11 game integration verification
 on:
   push:
     branches: [feature/v3.11-survival]
+    paths-ignore:
+      - 'v311/ci-report.md'
   workflow_dispatch:
 permissions:
   contents: write
@@ -50,7 +52,7 @@ jobs:
           set -o pipefail
           NODE_ENV=test npm test 2>&1 | tee v311-legacy.log
       - name: Publish branch-only verification report
-        if: always()
+        if: ${{ !cancelled() && steps.rules.outcome != 'skipped' && steps.types.outcome != 'skipped' && steps.legacy.outcome != 'skipped' }}
         run: |
           mkdir -p v311
           {
