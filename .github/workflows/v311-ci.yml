@@ -1,0 +1,34 @@
+name: V3.11 game integration verification
+on:
+  push:
+    branches: [feature/v3.11-survival]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify extracted source present
+        run: |
+          test -f server.mjs
+          test -f server/NavigationWorker.mjs
+          test -f apps/client/src/main.ts
+          test -f v311/GameplaySystems.mjs
+      - name: Install dependencies and generate assets
+        run: |
+          npm install --include=dev --workspaces --no-audit --no-fund
+          node scripts/copy-draco.mjs
+          node scripts/generate-sfx.mjs
+          npm run build:nav
+      - name: Test full existing game
+        run: NODE_ENV=test npm test
+      - name: Test V3.11 gameplay modules
+        run: node --test v311/*.test.mjs
+      - name: Compile TypeScript and bundle game
+        run: npm run build
