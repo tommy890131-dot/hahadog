@@ -1,14 +1,16 @@
 services:
   - type: web
-    name: deadline-four-v392-coop
+    name: deadline-four-v311-playtest
     runtime: node
     region: singapore
     plan: free
     autoDeployTrigger: commit
-    buildCommand: node bootstrap.mjs && bash scripts/render-build.sh
+    buildCommand: bash scripts/render-build.sh
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: V311_ENABLED
+        value: "1"
       - key: NODE_ENV
         value: production
       - key: HOST
