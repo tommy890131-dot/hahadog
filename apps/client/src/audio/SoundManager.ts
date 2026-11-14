@@ -125,8 +125,8 @@ export class SoundManager {
   }
 
   playWeaponShot(category:WeaponCategory,indoor=false):boolean{
-    const key:AudioKey=category==='ar'?'rifle':category;
-    return this.playLocal(key,{pistol:.42,smg:.40,ar:.48,lmg:.55}[category],indoor ? 0.22 : 0.01);
+    const key:AudioKey=category==='ar'||category==='sniper'?'rifle':category;
+    return this.playLocal(key,{pistol:.42,smg:.40,ar:.48,lmg:.55,sniper:.62}[category],indoor ? 0.22 : 0.01);
   }
 
   playHitmarker(headshot=false):boolean{
@@ -136,7 +136,7 @@ export class SoundManager {
   /** Spatial sound for squadmate gunfire. Requires the authoritative shot's position. */
   playRemoteGunshot(category:WeaponCategory,point:THREE.Vector3):boolean{
     if(!this.canPlay())return false;
-    const key:AudioKey=category==='ar'?'rifle':category;
+    const key:AudioKey=category==='ar'||category==='sniper'?'rifle':category;
     const buffer=this.buffers.get(key);
     if(!buffer||this.camera.position.distanceToSquared(point)>80*80)return false;
     let voice=this.remote.find(v=>!v.isPlaying);
