@@ -82,7 +82,6 @@ test('two players sync loss/retry, victory/next, final restart and reject non-ho
     await Promise.all([a.receive(m=>m.type==='campaignStart'&&m.levelIndex===0),
       b.receive(m=>m.type==='campaignStart'&&m.levelIndex===0)]);
     for(let level=0;level<4;level++){
-      a.clear();b.clear();
       await Promise.all([a.receive(m=>m.type==='wave'),b.receive(m=>m.type==='wave')]);
       a.clear();b.clear();
       a.send({type:'testCampaignResult',result:'won'});
