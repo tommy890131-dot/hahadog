@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {createRound,enterPlayer,setPlayerState,completeObjective,stepRound,computeThreat} from './v311/survival-round.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
+import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
 import {SPECIALS,DEFENSES,RARITIES,chooseSpecial,bossPhase,lootRarity,validPlacement,claimLoot,canTurretShoot,nextEvent} from './v311/GameplaySystems.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -104,7 +105,7 @@ function publicPlayer(p){const a=activeAmmo(p);return {id:p.id,name:p.name,x:p.x
   downed:p.downed,reloading:p.reloadUntil>Date.now(),inSafehouse:safe(p)};}
 function send(peer,msg){peer?.send(msg);}
 function announce(room,obj){for(const peer of room.players.keys())send(peer,obj);}
-function lobbyInfo(room){return {type:'room',code:room.code,hostId:room.hostId,phase:room.phase,wave:room.wave,players:[...room.players.values()].map(publicPlayer)};}
+function lobbyInfo(room){return {type:'room',code:room.code,hostId:room.hostId,phase:room.phase,wave:room.wave,players:[...room.players.values()].map(publicPlayer),levelIndex:room.levelIndex??0,result:room.lastResult??null};}
 function syncLobby(room){announce(room,lobbyInfo(room));}
 function joinRoom(peer,code,name){
   if(peer.room){send(peer,{type:'error',message:'你已加入房間'});return;}
@@ -116,7 +117,7 @@ function joinRoom(peer,code,name){
 }
 function startWave(room){
   room.phase='playing';room.wave++;
-  room.pending=TEST_EMPTY_WAVES?0:Math.min(135,24+room.wave*9+room.players.size*7);
+  room.pending=TEST_EMPTY_WAVES?0:Math.min(135,24+room.wave*9+room.players.size*7+(V311?stageAt(room.levelIndex??0).extraEnemies:0));
   room.zombies=[];room.nextSpawnAt=Date.now();room.nextWaveAt=0;room.directorPhase='buildup';
   room.navUpdateAt=0;room.fields=new Map();room.navCursor=0;
   announce(room,{type:'wave',wave:room.wave,message:`第 ${room.wave} 波：城市屍潮來襲`});
@@ -144,23 +145,29 @@ function snapshot(room,now){
     defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
     bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0});
 }
-function startMatch(room){
+function startMatch(room,{preserveCampaign=false}={}){
   const freshRun=room.phase==='ended';
+  room.lastResult=null;
+  room.fields.clear();room.revive.clear();room.damageTimes=[];
+  room.pressure=0;room.lastSnapshot=0;room.navCursor=0;room.lastDirectorAt=0;
   room.wave=0;room.phase='lobby';room.zombies=[];room.pending=0;
   let i=0;for(const p of room.players.values()){
     const starts=[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
-    if(freshRun)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
+    if(freshRun&&!preserveCampaign)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
       owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},weaponLevel:0,txn:new Map()});
-    Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0});
+    Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0,aiming:false,skillNextAt:0,skillUntil:0});
+    for(const id of Object.keys(p.inventory))p.inventory[id]=freshAmmo(id);
   }
   if(V311){
-    room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:90000});
+    const stage=stageAt(room.levelIndex??0);
+    room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:stage.extractionMs});
     room.survival.extractionZone='safehouse';
     room.missionKills=0;
     room.defenses=[];room.loot=[];room.bossSpawned=false;room.nextExtraEventAt=Date.now()+45000;room.nextItemId=1;
     for(const p of room.players.values())enterPlayer(room.survival,p.id);
     stepRound(room.survival,Date.now());
-    announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:0,missionPhase:'objectives'});
+    announce(room,{type:'campaignStart',levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective});
+    announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective,progress:0,missionPhase:'objectives'});
   }
   startWave(room);
 }
@@ -183,12 +190,12 @@ function rewardKill(room,player,z,headshot){
   }
   if(V311&&room.survival?.phase==='objectives'){
     room.missionKills=(room.missionKills||0)+1;
-    if(room.missionKills>=12 && room.bossSpawned && !room.zombies.some(z=>z.kind==='boss'&&z.hp>0)){
+    if(room.missionKills>=stageAt(room.levelIndex).goal && room.bossSpawned && !room.zombies.some(z=>z.kind==='boss'&&z.hp>0)){
       completeObjective(room.survival);
       stepRound(room.survival,Date.now());
-      announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:12,missionPhase:'extraction',
+      announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:LEVELS[room.levelIndex].id,levelLabel:LEVELS[room.levelIndex].label,goal:stageAt(room.levelIndex).goal,progress:stageAt(room.levelIndex).goal,missionPhase:'extraction',
         message:'任務完成！90 秒內全隊抵達安全屋撤離點'});
-    }else announce(room,{type:'missionProgress',progress:room.missionKills,goal:12});
+    }else announce(room,{type:'missionProgress',levelIndex:room.levelIndex,progress:Math.min(room.missionKills,stageAt(room.levelIndex).goal),goal:stageAt(room.levelIndex).goal});
   }
   player.maxHp+=progress.levelUps*5;
   player.hp=Math.min(player.maxHp,player.hp+progress.levelUps*5);
@@ -434,7 +441,7 @@ function onMessage(peer,msg){
     if(peer.room)return;
     if(rooms.size>=MAX_ROOMS){send(peer,{type:'error',message:'伺服器房間已滿'});return;}
     const code=makeCode();if(!code)return;
-    const room={code,players:new Map(),hostId:peer.id,phase:'lobby',wave:0,zombies:[],pending:0,
+    const room={code,players:new Map(),hostId:peer.id,phase:'lobby',wave:0,zombies:[],pending:0,levelIndex:0,lastResult:null,
       nextSpawnAt:0,nextWaveAt:0,lastSnapshot:0,damageTimes:[],lastDirectorAt:0,
       navCursor:0,pressure:0,directorPhase:'buildup',relaxUntil:0,navUpdateAt:0,fields:new Map(),revive:new Map()};
     rooms.set(code,room);joinRoom(peer,code,msg.name);return;
@@ -443,8 +450,17 @@ function onMessage(peer,msg){
   const room=peer.room,p=room?.players.get(peer);if(!p)return;
   if(msg.type==='start'){
     if(peer.id!==room.hostId){send(peer,{type:'error',message:'只有隊長能開始遊戲'});return;}
-    if(room.phase==='lobby'||room.phase==='ended')startMatch(room);
+    if(room.phase==='lobby'||(!V311&&room.phase==='ended'))startMatch(room);
     return;
+  }
+  if(V311&&['retryLevel','nextLevel','restartCampaign'].includes(msg.type)){
+    const action=msg.type;
+    if(!allowedCampaignAction({phase:room.phase,result:room.lastResult,index:room.levelIndex,action,isHost:peer.id===room.hostId})){
+      send(peer,{type:'error',message:'操作無效：請確認隊長及關卡結算狀態'});return;
+    }
+    const preserveCampaign=action==='nextLevel';
+    room.levelIndex=nextStageIndex(room.levelIndex,action);
+    startMatch(room,{preserveCampaign});return;
   }
   if(V311&&msg.type==='selectClass'&&room.phase==='lobby'&&typeof msg.classId==='string'&&Object.hasOwn(CLASSES,msg.classId)){
     p.classId=msg.classId;syncLobby(room);return;
@@ -565,7 +581,7 @@ function onClose(peer){
   if(room.hostId===peer.id)room.hostId=room.players.values().next().value.id;
   syncLobby(room);
   if(room.phase==='playing'&&[...room.players.values()].every(p=>p.downed)){
-    room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});}
+    room.phase='ended';room.lastResult='lost';announce(room,{type:'gameOver',result:'lost',levelIndex:room.levelIndex??0,wave:room.wave});syncLobby(room);}
 }
 function tick(){
   const now=Date.now();
@@ -580,8 +596,10 @@ function tick(){
         setPlayerState(room.survival,p.id,{alive:!p.downed&&p.hp>0,inZone:safe(p)&&Math.abs(p.y)<2});
       const result=stepRound(room.survival,now);
       if(result==='won'||result==='lost'){
-        room.phase='ended';
-        announce(room,{type:'missionEnd',success:result==='won',message:result==='won'?'小隊成功撤離！':'撤離任務失敗'});
+        room.phase='ended';room.lastResult=result==='won'?'won':'lost';
+        announce(room,{type:'missionEnd',success:result==='won',result:room.lastResult,levelIndex:room.levelIndex,
+          levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
+          message:result==='won'?'小隊成功撤離！':'撤離任務失敗'});
         syncLobby(room);continue;
       }
     }
@@ -597,12 +615,12 @@ function tick(){
       spawnZombie(room);room.pending--;room.nextSpawnAt=now+Math.max(95,200-room.wave*8);
     }
     if(V311&&room.survival){
-      if(!room.bossSpawned&&room.missionKills>=8&&room.zombies.length<Math.min(MAX_ZOMBIES,24)){
+      if(!room.bossSpawned&&room.missionKills>=stageAt(room.levelIndex).bossAt&&room.zombies.length<Math.min(MAX_ZOMBIES,24)){
         const source=MAP.spawns.find(point=>[...room.players.values()].every(p=>distance2(point,p)>16));
         if(source){
-          const z={id:nextZombieId++,x:source.x,y:0,vy:0,grounded:true,z:source.z,kind:'boss',hp:SPECIALS.boss.hp,maxHp:SPECIALS.boss.hp,
+          const z={id:nextZombieId++,x:source.x,y:0,vy:0,grounded:true,z:source.z,kind:'boss',hp:stageAt(room.levelIndex).bossHp,maxHp:stageAt(room.levelIndex).bossHp,
             speed:SPECIALS.boss.speed,attackAt:0,abilityAt:0,step:0,facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false,bossPhase:1};
-          room.zombies.push(z);room.bossSpawned=true;announce(room,{type:'bossAppeared',message:'變異巨獸已出現！先擊敗 Boss 才能撤離'});
+          room.zombies.push(z);room.bossSpawned=true;announce(room,{type:'bossAppeared',levelIndex:room.levelIndex,message:LEVELS[room.levelIndex].label+'：變異巨獸出現！'});
         }
       }
       for(const d of room.defenses){
@@ -680,7 +698,7 @@ function tick(){
       announce(room,{type:'director',pressure:room.pressure,directorPhase:room.directorPhase});
     }
     if(players.length && players.every(p=>p.downed)){
-      room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});syncLobby(room);continue;
+      room.phase='ended';room.lastResult='lost';announce(room,{type:'gameOver',result:'lost',levelIndex:room.levelIndex??0,wave:room.wave});syncLobby(room);continue;
     }
     if(V311)room.defenses=room.defenses.filter(d=>d.hp>0);
     if(V311&&room.survival?.phase==='extraction'&&room.pending===0&&room.zombies.length===0){
@@ -688,6 +706,7 @@ function tick(){
       continue;
     }
     if(room.pending===0&&room.zombies.length===0){
+      if(V311&&room.survival?.phase==='objectives'){startWave(room);snapshot(room,now);continue;}
       startIntermission(room,now);
       snapshot(room,now);
       continue;
