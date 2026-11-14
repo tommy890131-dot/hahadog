@@ -42,7 +42,7 @@ test('original PBR urban textures include albedo, tangent normals, and roughness
 test('art pass keeps shared map and combat/economy protocol unchanged', () => {
   const cfg=JSON.parse(fs.readFileSync(path.join(root,'packages/shared/WeaponConfig.json'),'utf8'));
   const map=JSON.parse(fs.readFileSync(path.join(root,'packages/shared/MapLayout.json'),'utf8'));
-  assert.equal(Object.keys(cfg).length,9);
+  assert.equal(Object.keys(cfg).length,8);
   assert.equal(map.halfSize,90);
   const scene=fs.readFileSync(path.join(root,'apps/client/src/world/World.ts'),'utf8');
   assert.match(scene,/addCityDetails/);

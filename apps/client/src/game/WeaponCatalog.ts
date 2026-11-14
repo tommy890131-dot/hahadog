@@ -1,6 +1,6 @@
 import rawWeapons from '../../../../packages/shared/WeaponConfig.json';
 
-export type WeaponCategory='pistol'|'smg'|'ar'|'lmg'|'sniper';
+export type WeaponCategory='pistol'|'smg'|'ar'|'lmg';
 export type WeaponId=keyof typeof rawWeapons;
 export type WeaponSpec={
   name:string;category:WeaponCategory;price:number;damage:number;rpm:number;

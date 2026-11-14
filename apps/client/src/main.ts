@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import {AimController,AIM_WEAPONS} from '../../../v311/aim-controller';
 import { createPostProcessing } from './core/PostProcessing';
 import { AssetManager } from './assets/AssetManager';
 import { configurePhotorealRenderer } from './core/RendererSetup';
@@ -43,7 +42,7 @@ app.innerHTML=`
   <label class="mouse-sensitivity" for="mouse-sensitivity">滑鼠視角靈敏度 <output id="mouse-sensitivity-value">45%</output>
     <input id="mouse-sensitivity" type="range" min="15" max="100" step="5" value="45" aria-label="調整滑鼠靈敏度" />
   </label>
-  <p id="notice" class="status"></p><p class="hint">WASD 移動 · Space 跳躍 · Shift 奔跑 · 左鍵射擊 · 右鍵瞄準 · Q 技能 · V 推擊 · R 換彈 · B 商店 · F8 畫質模式 · Tab 戰績</p>
+  <p id="notice" class="status"></p><p class="hint">WASD 移動 · Space 跳躍 · Shift 奔跑 · 左鍵射擊 · R 換彈 · B 商店 · F8 畫質模式 · Tab 戰績</p>
   <div id="asset-label" class="status"></div>
 </div></div>
 <div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.9.2 · PHYSICS / SECURITY / NAV</small></div>
@@ -87,16 +86,6 @@ app.prepend(renderer.domElement);
 renderer.domElement.classList.add('game-canvas');
 configureSurfaceMaterialQuality(renderer);
 const world=new World(scene),controller=new FirstPersonController(camera,renderer.domElement,world);
-const aim=new AimController(AIM_WEAPONS.assault_rifle);
-let aimHeld=false;
-const missionOverlay=document.createElement('aside');
-missionOverlay.style.cssText='position:fixed;top:92px;left:18px;z-index:20;background:#07141bd9;border:1px solid #63a6ad;padding:13px 18px;color:#eaf9ff;font:600 15px sans-serif;max-width:320px;pointer-events:none;display:none';
-document.body.append(missionOverlay);
-const classPicker=document.createElement('div');
-classPicker.style.cssText='margin:12px 0;color:#e5faff';
-classPicker.innerHTML='<label for="v311-class">職業：</label><select id="v311-class"><option value="assault">突擊兵｜火力壓制</option><option value="medic">醫療兵｜戰地急救</option><option value="engineer">工程兵｜防禦補強</option><option value="recon">偵察兵｜弱點標記</option></select><small style="display:block">Q 技能 · 右鍵瞄準 · V 推擊</small>';
-get<HTMLElement>('lobby').append(classPicker);
-get<HTMLSelectElement>('v311-class').onchange=event=>network.send({type:'selectClass',classId:(event.target as HTMLSelectElement).value});
 const sensitivitySlider=get<HTMLInputElement>('mouse-sensitivity');
 const sensitivityOutput=get<HTMLOutputElement>('mouse-sensitivity-value');
 let savedSensitivity=45;
@@ -104,7 +93,7 @@ try { savedSensitivity=Number(localStorage.getItem('df-mouse-sensitivity')||45);
 sensitivitySlider.value=String(Math.max(15,Math.min(100,Number.isFinite(savedSensitivity)?savedSensitivity:45)));
 const updateSensitivity=()=>{
   const pct=Number(sensitivitySlider.value);
-  controller.setLookSensitivity(pct/100*(aimHeld?.5:1));
+  controller.setLookSensitivity(pct/100);
   sensitivityOutput.textContent=`${pct}%`;
   try { localStorage.setItem('df-mouse-sensitivity',String(pct)); } catch {}
 };
@@ -153,7 +142,6 @@ let desiredSwitch:WeaponId|null=null,requestToken=0;
 async function swapWeapon(id:WeaponId,level:number,ammo:number,reserve:number):Promise<void>{
   if(desiredSwitch===id)return;
   desiredSwitch=id;
-  aim.equip(id==='sniper_rifle'?AIM_WEAPONS.sniper_rifle:AIM_WEAPONS.assault_rifle);
   const token=++requestToken;
   const asset=await assets.loadWeapon(toTuning(id,level).modelPath);
   if(token!==requestToken)return;
@@ -247,24 +235,6 @@ function renderHUD(){
 }
 network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
-  if(event.type==='mission'){
-    missionOverlay.style.display='block';
-    missionOverlay.dataset.phase=event.missionPhase||'objectives';
-    missionOverlay.textContent=event.missionPhase==='extraction'?'撤離開放｜90 秒內全隊前往安全屋':`第一關 · 失聯街區｜擊殺感染者 ${event.progress||0}/${event.goal||12}`;
-    if(event.message)alertMessage(event.message);
-    return;
-  }
-  if(event.type==='missionProgress'){
-    if(missionOverlay.dataset.phase!=='extraction')
-      missionOverlay.textContent=`第一關 · 失聯街區｜擊殺感染者 ${event.progress||0}/${event.goal||12}`;
-    return;
-  }
-  if(event.type==='missionEnd'){
-    alertMessage(event.message||'任務結束');controller.controls.unlock();menuMode('over');
-    get<HTMLElement>('last-wave').textContent=event.message||'任務結算';
-    missionOverlay.style.display='none';return;
-  }
-  if(event.type==='skillUsed'){if(event.by===network.session.selfId)alertMessage('職業技能已啟動');return;}
   if(event.type==='joined'){menuMode('lobby');drawLobby();shop.setContext('lobby',0);shop.update(self());return;}
   if(event.type==='room'){drawLobby();shop.update(self());return;}
   if(event.type==='disconnected'){
@@ -384,22 +354,14 @@ function tryFire(){
 renderer.domElement.addEventListener('mousedown',event=>{
   if(!controller.controls.isLocked||network.session.phase!=='playing'||downed||shop.isOpen)return;
   if(event.button===0){primaryHeld=true;tryFire();}
-  else if(event.button===2){
-    aimHeld=true;aim.setRightButtonHeld(true);network.send({type:'aim',active:true});
-    updateSensitivity();
+  else if(event.button===2&&performance.now()-lastShove>650){
+    lastShove=performance.now();sendPose();network.send({type:'shove'});
   }
 });
-window.addEventListener('mouseup',event=>{
-  if(event.button===0)primaryHeld=false;
-  if(event.button===2){aimHeld=false;aim.setRightButtonHeld(false);network.send({type:'aim',active:false});updateSensitivity();}
-});
-window.addEventListener('blur',()=>{primaryHeld=false;aimHeld=false;aim.setRightButtonHeld(false);updateSensitivity();});
+window.addEventListener('mouseup',event=>{if(event.button===0)primaryHeld=false;});
+window.addEventListener('blur',()=>{primaryHeld=false;});
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('keydown',event=>{
-  if(event.code==='KeyQ'&&!event.repeat&&network.session.phase==='playing'){network.send({type:'skill'});return;}
-  if(event.code==='KeyV'&&!event.repeat&&network.session.phase==='playing'&&performance.now()-lastShove>650){
-    lastShove=performance.now();sendPose();network.send({type:'shove'});return;
-  }
   if(event.code==='F8'&&!event.repeat){
     event.preventDefault();
     const modes:QualityMode[]=['auto','high','balanced','performance'];
@@ -444,9 +406,6 @@ function frame(){
   requestAnimationFrame(frame);
   const wallDelta=clock.getDelta();
   const dt=Math.min(wallDelta,.05),now=performance.now();
-  aim.setSprinting(controller.sprinting);
-  const ads=aim.update(dt);
-  if(Math.abs(camera.fov-ads.fov)>.02){camera.fov=ads.fov;camera.updateProjectionMatrix();}
   if(network.session.phase==='intermission'){
     const remaining=Math.max(0,shopRemainingUntil-now);
     shop.setRemaining(remaining);

@@ -1,6 +1,4 @@
 import http from 'node:http';
-import {createRound,enterPlayer,setPlayerState,completeObjective,stepRound,computeThreat} from './v311/survival-round.mjs';
-import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,7 +17,6 @@ const TEST_EMPTY_WAVES = process.env.NODE_ENV === 'test' && process.env.TEST_EMP
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const TICK_MS = 50;
-const V311 = process.env.V311_ENABLED === '1';
 const MAX_ZOMBIES = Math.max(8, Math.min(96, Number(process.env.GAME_MAX_ZOMBIES) || 96));
 const WORLD_LIMIT = MAP.halfSize;
 const MAX_ROOMS = Math.max(1, Math.min(100, Number(process.env.GAME_MAX_ROOMS) || 100));
@@ -93,13 +90,12 @@ function createPlayer(peer,name,slot){
   return {id:peer.id,name:String(name||'倖存者').replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,16)||'倖存者',
     x,z,y:0,vy:0,grounded:true,lastJump:0,yaw:0,pitch:0,hp:100,maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
     owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},
-    classId:'assault',skillNextAt:0,skillUntil:0,aiming:false,
     downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:0,lastMoveSeq:0,moveCredit:0.35,lastShove:0,txn:new Map()};
 }
 function activeAmmo(p){return p.inventory[p.weaponId];}
 function publicPlayer(p){const a=activeAmmo(p);return {id:p.id,name:p.name,x:p.x,z:p.z,y:p.y,vy:p.vy,grounded:p.grounded,yaw:p.yaw,pitch:p.pitch,ackMoveSeq:p.lastMoveSeq,
   hp:p.hp,maxHp:p.maxHp,armor:p.armor,level:p.level,xp:p.xp,nextXp:p.level>=50?0:p.level*150,money:p.money,kills:p.kills,
-  weaponId:p.weaponId,primary:p.primary,secondary:p.secondary,owned:p.owned,ammo:a.ammo,reserve:a.reserve,classId:p.classId,
+  weaponId:p.weaponId,primary:p.primary,secondary:p.secondary,owned:p.owned,ammo:a.ammo,reserve:a.reserve,
   downed:p.downed,reloading:p.reloadUntil>Date.now(),inSafehouse:safe(p)};}
 function send(peer,msg){peer?.send(msg);}
 function announce(room,obj){for(const peer of room.players.keys())send(peer,obj);}
@@ -150,14 +146,6 @@ function startMatch(room){
       owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},txn:new Map()});
     Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0});
   }
-  if(V311){
-    room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:90000});
-    room.survival.extractionZone='safehouse';
-    room.missionKills=0;
-    for(const p of room.players.values())enterPlayer(room.survival,p.id);
-    stepRound(room.survival,Date.now());
-    announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:0,missionPhase:'objectives'});
-  }
   startWave(room);
 }
 function rewardKill(room,player,z,headshot){
@@ -169,15 +157,6 @@ function rewardKill(room,player,z,headshot){
   player.money=Math.min(1_000_000_000,player.money+money);
   const progress=gainExperience(player.level,player.xp,xp);
   player.level=progress.level;player.xp=progress.xp;player.kills++;
-  if(V311&&room.survival?.phase==='objectives'){
-    room.missionKills=(room.missionKills||0)+1;
-    if(room.missionKills>=12){
-      completeObjective(room.survival);
-      stepRound(room.survival,Date.now());
-      announce(room,{type:'mission',mission:room.survival.mission,levelId:LEVELS[0].id,goal:12,progress:12,missionPhase:'extraction',
-        message:'任務完成！90 秒內全隊抵達安全屋撤離點'});
-    }else announce(room,{type:'missionProgress',progress:room.missionKills,goal:12});
-  }
   player.maxHp+=progress.levelUps*5;
   player.hp=Math.min(player.maxHp,player.hp+progress.levelUps*5);
   send([...room.players.keys()].find(k=>room.players.get(k)===player),{
@@ -266,7 +245,7 @@ function shoot(room,p,now){
   const w=WEAPONS[p.weaponId],a=activeAmmo(p);
   if(p.downed||room.phase!=='playing'||p.reloadUntil||now<(p.nextShotAt||0)||a.ammo<=0)return;
   a.ammo--;p.lastShot=now;p.nextShotAt=now+60000/w.rpm;
-  const spread=w.spread*(V311&&p.aiming?.35:1)*Math.PI/180;
+  const spread=w.spread*Math.PI/180;
   const yaw=p.yaw+rnd(-spread,spread),pitch=p.pitch+rnd(-spread*.7,spread*.7);
   const dir={x:Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
   const from={x:p.x,y:p.y+1.52,z:p.z};let wallAt=115;
@@ -284,7 +263,7 @@ function shoot(room,p,now){
     const z=entry.z;if(z.hp<=0)continue;
     hit=true;headshot ||=entry.headshot;
     const t=clamp((entry.t-w.falloffStart)/(w.falloffEnd-w.falloffStart),0,1);
-    const dmg=Math.round(w.damage*(1-t*(1-w.minFactor))*(entry.headshot?(V311&&p.weaponId==='sniper'?2.5:1.65):1));
+    const dmg=Math.round(w.damage*(1-t*(1-w.minFactor))*(entry.headshot?1.65:1));
     z.hp-=dmg;z.knockX+=dir.x*w.knockback;z.knockZ+=dir.z*w.knockback;
     if(z.hp<=0){rewardKill(room,p,z,entry.headshot);killed=true;}
   }
@@ -430,21 +409,6 @@ function onMessage(peer,msg){
     if(room.phase==='lobby'||room.phase==='ended')startMatch(room);
     return;
   }
-  if(V311&&msg.type==='selectClass'&&room.phase==='lobby'&&typeof msg.classId==='string'&&Object.hasOwn(CLASSES,msg.classId)){
-    p.classId=msg.classId;syncLobby(room);return;
-  }
-  if(V311&&msg.type==='aim'&&typeof msg.active==='boolean'){
-    p.aiming=msg.active&&room.phase==='playing'&&!p.downed;return;
-  }
-  if(V311&&msg.type==='skill'&&room.phase==='playing'&&!p.downed&&now>=p.skillNextAt){
-    p.skillNextAt=now+CLASSES[p.classId].cooldownMs;
-    if(p.classId==='medic'){
-      for(const teammate of room.players.values())if(!teammate.downed&&distance2(p,teammate)<8&&Math.abs(p.y-teammate.y)<2)
-        teammate.hp=Math.min(teammate.maxHp,teammate.hp+35);
-    }else if(p.classId==='engineer')p.armor=Math.min(100,p.armor+35);
-    else p.skillUntil=now+10000;
-    announce(room,{type:'skillUsed',by:p.id,classId:p.classId});return;
-  }
   if(msg.type==='move'&&room.phase==='playing'&&!p.downed){
     if(![msg.x,msg.z,msg.yaw,msg.pitch].every(finite))return;
     const elapsed=now-p.lastMove;
@@ -531,16 +495,6 @@ function tick(){
       else{if(now-room.lastSnapshot>=100)snapshot(room,now);continue;}
     }
     if(room.phase!=='playing')continue;
-    if(V311&&room.survival){
-      for(const p of room.players.values())
-        setPlayerState(room.survival,p.id,{alive:!p.downed&&p.hp>0,inZone:safe(p)&&Math.abs(p.y)<2});
-      const result=stepRound(room.survival,now);
-      if(result==='won'||result==='lost'){
-        room.phase='ended';
-        announce(room,{type:'missionEnd',success:result==='won',message:result==='won'?'小隊成功撤離！':'撤離任務失敗'});
-        syncLobby(room);continue;
-      }
-    }
     const players=[...room.players.values()],living=players.filter(p=>!p.downed);
     for(const p of players){
       applyReload(p,now);
@@ -549,7 +503,7 @@ function tick(){
         p.y=result.y;p.vy=result.vy;p.grounded=result.grounded;
       }
     }
-    if(room.pending>0 && now>=room.nextSpawnAt&&room.zombies.length<MAX_ZOMBIES&&(!V311||computeThreat({activeEnemies:room.zombies.length,cap:Math.min(MAX_ZOMBIES,24),progress:Math.min(1,(room.missionKills||0)/12)}).spawnBudget>0)&&room.directorPhase!=='relax'){
+    if(room.pending>0 && now>=room.nextSpawnAt&&room.zombies.length<MAX_ZOMBIES&&room.directorPhase!=='relax'){
       spawnZombie(room);room.pending--;room.nextSpawnAt=now+Math.max(95,200-room.wave*8);
     }
     const zombieBuckets=buildZombieBuckets(room.zombies);
@@ -655,7 +609,7 @@ const server=http.createServer((req,res)=>{
   catch{res.writeHead(400);res.end();return;}
   if(url.pathname==='/health'){
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,rooms:rooms.size,players:peers.size,maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS}));return;
+    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,rooms:rooms.size,players:peers.size,maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS}));return;
   }
   if(req.method!=='GET'&&req.method!=='HEAD'){
     res.writeHead(405);res.end();return;
@@ -688,7 +642,7 @@ server.on('upgrade',(req,socket)=>{
   socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');
   const peer=new Peer(socket,address);peers.add(peer);
   connectionCounts.set(address,(connectionCounts.get(address)||0)+1);
-  send(peer,{type:'hello',id:peer.id,version:V311?'3.11-survival':'3.9.2-physics-ws-worker'});
+  send(peer,{type:'hello',id:peer.id,version:'3.9.2-physics-ws-worker'});
 });
 // Do not mark a Render deployment healthy when the Vite distribution is absent.
 if (process.env.NODE_ENV === 'production' && !fs.existsSync(path.join(DIST, 'index.html'))) {
