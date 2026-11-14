@@ -516,7 +516,7 @@ function onMessage(peer,msg){
 }
 function onClose(peer){
   peers.delete(peer);const room=peer.room;if(!room)return;
-  room.players.delete(peer);room.revive.delete(peer.id);peer.room=null;
+  room.players.delete(peer);room.revive.delete(peer.id);if(V311&&room.survival)delete room.survival.players[peer.id];peer.room=null;
   if(room.players.size===0){rooms.delete(room.code);return;}
   if(room.hostId===peer.id)room.hostId=room.players.values().next().value.id;
   syncLobby(room);
