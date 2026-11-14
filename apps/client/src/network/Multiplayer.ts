@@ -17,7 +17,7 @@ export type ServerEvent = {
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
   ok?:boolean;sku?:string;reason?:string;action?:string;weaponId?:string;
   mission?:string;levelId?:string;missionPhase?:string;goal?:number;progress?:number;success?:boolean;classId?:string;
-  defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;
+  defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;kind?:string;
 };
 export class Multiplayer {
   ws:WebSocket|null=null;
