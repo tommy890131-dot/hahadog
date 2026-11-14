@@ -111,7 +111,7 @@ const world=new World(scene),controller=new FirstPersonController(camera,rendere
 const aim=new AimController(AIM_WEAPONS.assault_rifle);
 let aimHeld=false;
 const missionOverlay=document.createElement('aside');
-missionOverlay.style.cssText='position:fixed;top:92px;left:18px;z-index:20;background:#07141bd9;border:1px solid #63a6ad;padding:13px 18px;color:#eaf9ff;font:600 15px sans-serif;max-width:320px;pointer-events:none;display:none';
+missionOverlay.style.cssText='position:fixed;top:265px;right:26px;z-index:20;background:#07141bd9;border:1px solid #63a6ad;padding:13px 18px;color:#eaf9ff;font:600 15px sans-serif;max-width:320px;pointer-events:none;display:none';
 document.body.append(missionOverlay);
 const classPicker=document.createElement('div');
 classPicker.style.cssText='margin:12px 0;color:#e5faff';
