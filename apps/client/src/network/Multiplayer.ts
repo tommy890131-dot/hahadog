@@ -4,7 +4,9 @@ export type PlayerRecord = {
   weaponId:string;primary:string|null;secondary:string;owned:string[];inSafehouse:boolean;
   ammo:number;reserve:number;kills:number;downed:boolean;reloading:boolean;
 };
-export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; kind:'runner'|'walker'|'brute'; step:number; facing:number; };
+export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; maxHp?:number; kind:'runner'|'walker'|'brute'|'screamer'|'spitter'|'climber'|'juggernaut'|'boss'; step:number; facing:number; };
+export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
+export type LootRecord = {id:number;x:number;y:number;z:number;rarity:'common'|'uncommon'|'rare'|'legendary'};
 export type ServerEvent = {
   type:string; id?:string; selfId?:string; code?:string; hostId?:string;
   phase?:string; players?:PlayerRecord[]; zombies?:ZombieRecord[];
@@ -15,6 +17,7 @@ export type ServerEvent = {
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
   ok?:boolean;sku?:string;reason?:string;action?:string;weaponId?:string;
   mission?:string;levelId?:string;missionPhase?:string;goal?:number;progress?:number;success?:boolean;classId?:string;
+  defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;
 };
 export class Multiplayer {
   ws:WebSocket|null=null;
