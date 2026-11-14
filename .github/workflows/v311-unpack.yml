@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for path in server.mjs scripts/render-build.sh apps/client/src/main.ts tests/physics-security-regression.test.mjs; do
+          for path in server.mjs server/NavigationWorker.mjs scripts/render-build.sh apps/client/src/main.ts tests/physics-security-regression.test.mjs; do
             test -f "$path" || { echo "::error::Missing extracted $path"; exit 1; }
           done
           echo "All essential game sources extracted"
@@ -35,7 +35,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           added=0
-          for path in server.mjs scripts apps tests packages public package.json package-lock.json; do
+          for path in server.mjs server scripts apps tests packages public package.json package-lock.json; do
             if [[ -e "$path" ]]; then
               git add -f -A -- "$path"
               added=$((added + 1))
