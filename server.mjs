@@ -611,7 +611,9 @@ function tick(){
         if(!z)continue;
         d.nextShotAt=now+DEFENSES.turret.intervalMs;
         z.hp-=DEFENSES.turret.damage;
-        announce(room,{type:'turretShot',id:d.id,enemyId:z.id});
+        announce(room,{type:'turretShot',defenseId:d.id,enemyId:z.id,
+          from:{x:d.x,y:d.y+.72,z:d.z},
+          to:{x:z.x,y:z.y+(z.kind==='boss'?2.1:1.25),z:z.z}});
         if(z.hp<=0){z.hp=0;const owner=[...room.players.values()][0];if(owner)rewardKill(room,owner,z,false);}
       }
       room.zombies=room.zombies.filter(z=>z.hp>0);
