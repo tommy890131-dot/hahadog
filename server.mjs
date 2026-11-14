@@ -94,13 +94,13 @@ function createPlayer(peer,name,slot){
   return {id:peer.id,name:String(name||'倖存者').replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,16)||'倖存者',
     x,z,y:0,vy:0,grounded:true,lastJump:0,yaw:0,pitch:0,hp:100,maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
     owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},
-    classId:'assault',skillNextAt:0,skillUntil:0,aiming:false,
+    classId:'assault',skillNextAt:0,skillUntil:0,aiming:false,weaponLevel:0,
     downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:0,lastMoveSeq:0,moveCredit:0.35,lastShove:0,txn:new Map()};
 }
 function activeAmmo(p){return p.inventory[p.weaponId];}
 function publicPlayer(p){const a=activeAmmo(p);return {id:p.id,name:p.name,x:p.x,z:p.z,y:p.y,vy:p.vy,grounded:p.grounded,yaw:p.yaw,pitch:p.pitch,ackMoveSeq:p.lastMoveSeq,
   hp:p.hp,maxHp:p.maxHp,armor:p.armor,level:p.level,xp:p.xp,nextXp:p.level>=50?0:p.level*150,money:p.money,kills:p.kills,
-  weaponId:p.weaponId,primary:p.primary,secondary:p.secondary,owned:p.owned,ammo:a.ammo,reserve:a.reserve,classId:p.classId,
+  weaponId:p.weaponId,primary:p.primary,secondary:p.secondary,owned:p.owned,ammo:a.ammo,reserve:a.reserve,classId:p.classId,weaponLevel:p.weaponLevel??0,
   downed:p.downed,reloading:p.reloadUntil>Date.now(),inSafehouse:safe(p)};}
 function send(peer,msg){peer?.send(msg);}
 function announce(room,obj){for(const peer of room.players.keys())send(peer,obj);}
@@ -150,7 +150,7 @@ function startMatch(room){
   let i=0;for(const p of room.players.values()){
     const starts=[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
     if(freshRun)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
-      owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},txn:new Map()});
+      owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},weaponLevel:0,txn:new Map()});
     Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0});
   }
   if(V311){
@@ -285,8 +285,10 @@ function shoot(room,p,now){
   for(const b of collisionBoxes)wallAt=Math.min(wallAt,rayBox(from,dir,b));
   const hits=[];
   for(const z of room.zombies){
-    const head=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='brute'?1.85:1.55),z:z.z},z.kind==='brute'?.31:.245);
-    const body=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='brute'?1.12:1.04),z:z.z},z.kind==='brute'?.79:.51);
+    const head=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='boss'?3:z.kind==='brute'||z.kind==='juggernaut'?1.85:1.55),z:z.z},
+      z.kind==='boss'?.55:z.kind==='brute'||z.kind==='juggernaut'?.31:.245);
+    const body=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='boss'?2.1:z.kind==='brute'||z.kind==='juggernaut'?1.12:1.04),z:z.z},
+      z.kind==='boss'?1.4:z.kind==='brute'||z.kind==='juggernaut'?.79:.51);
     const t=Math.min(head,body);
     if(Number.isFinite(t)&&t<wallAt && t<110)hits.push({z,t,headshot:head<=body});
   }
@@ -296,7 +298,7 @@ function shoot(room,p,now){
     const z=entry.z;if(z.hp<=0)continue;
     hit=true;headshot ||=entry.headshot;
     const t=clamp((entry.t-w.falloffStart)/(w.falloffEnd-w.falloffStart),0,1);
-    const dmg=Math.round(w.damage*(1-t*(1-w.minFactor))*(entry.headshot?(V311&&p.weaponId==='sniper'?2.5:1.65):1));
+    const dmg=Math.round(w.damage*(1+(p.weaponLevel||0)*.12)*(1-t*(1-w.minFactor))*(entry.headshot?(V311&&p.weaponId==='sniper'?2.5:1.65):1));
     z.hp-=dmg;z.knockX+=dir.x*w.knockback;z.knockZ+=dir.z*w.knockback;
     if(z.hp<=0){rewardKill(room,p,z,entry.headshot);killed=true;}
   }
@@ -478,8 +480,13 @@ function onMessage(peer,msg){
     const item=room.loot.find(x=>x.id===msg.id);
     if(!claimLoot({player:p,item}))return;
     item.claimed=true;p.money+=RARITIES[item.rarity].credits;
+    if(item.rarity==='rare'||item.rarity==='legendary')p.weaponLevel=Math.min(3,(p.weaponLevel||0)+(item.rarity==='legendary'?2:1));
+    if(item.rarity==='legendary'&&!p.owned.includes('sniper_rifle')){
+      p.owned.push('sniper_rifle');p.inventory.sniper_rifle=freshAmmo('sniper_rifle');p.primary='sniper_rifle';
+    }
     room.loot=room.loot.filter(x=>!x.claimed);
-    announce(room,{type:'lootCollected',id:item.id,rarity:item.rarity,by:p.id,credits:RARITIES[item.rarity].credits});
+    announce(room,{type:'lootCollected',id:item.id,rarity:item.rarity,by:p.id,credits:RARITIES[item.rarity].credits,
+      upgradeLevel:p.weaponLevel,unlockedSniper:item.rarity==='legendary'});
     return;
   }
   if(msg.type==='move'&&room.phase==='playing'&&!p.downed){
@@ -630,6 +637,17 @@ function tick(){
       }
       const target=chooseTarget(room,z,living);
       if(!target)continue;
+      if(V311&&z.kind!=='boss'){
+        const wall=room.defenses.find(d=>d.kind==='barricade'&&Math.abs(d.y-z.y)<1.6&&distance2(d,z)<1.7);
+        if(wall){
+          if(now>z.attackAt){
+            z.attackAt=now+900;
+            wall.hp=Math.max(0,wall.hp-(SPECIALS[z.kind]?.damage??12));
+            announce(room,{type:'defenseDamaged',id:wall.id,hp:wall.hp});
+          }
+          continue;
+        }
+      }
       const xzDist=distance2(z,target),heightDiff=Math.abs(z.y-target.y);
       const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target);
       if(!canAttack)pursue(room,z,target,TICK_MS/1000,now,zombieBuckets.near(z));
