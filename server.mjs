@@ -663,6 +663,10 @@ function tick(){
       room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});syncLobby(room);continue;
     }
     if(V311)room.defenses=room.defenses.filter(d=>d.hp>0);
+    if(V311&&room.survival?.phase==='extraction'&&room.pending===0&&room.zombies.length===0){
+      if(now-room.lastSnapshot>=100)snapshot(room,now);
+      continue;
+    }
     if(room.pending===0&&room.zombies.length===0){
       startIntermission(room,now);
       snapshot(room,now);
