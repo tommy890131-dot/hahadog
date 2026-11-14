@@ -1,8 +1,8 @@
 # V3.11 CI report
-Source commit: e585612ad77444ff48a35cefaff5488c386b931a
-Rules: failure
+Source commit: f15f91c6c2bfdaee63d3c947ccbac956ffe23d5b
+Rules: success
 TypeScript/Vite: success
-Existing game regression: failure
+Existing game regression: success
 
 ## Build output (tail)
 ~~~
@@ -27,74 +27,46 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.66s[39m
+[32m✓ built in 1.33s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: M249 and PKM have extra viewmodel firing motion and gun flash
 ok 24 - M249 and PKM have extra viewmodel firing motion and gun flash
   ---
-  duration_ms: 0.140721
+  duration_ms: 0.080829
   type: 'test'
   ...
 1..24
 # tests 24
 # suites 0
-# pass 23
-# fail 1
+# pass 24
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4117.278343
+# duration_ms 4038.723102
 ~~~
 ## Regression test output (tail)
 ~~~
-  ...
-# Subtest: Render Blueprint uses one free Singapore Web Service and validates output
-not ok 36 - Render Blueprint uses one free Singapore Web Service and validates output
-  ---
-  duration_ms: 1.680777
-  type: 'test'
-  location: '/home/runner/work/hahadog/hahadog/tests/render-deploy.test.mjs:21:1'
-  failureType: 'testCodeFailure'
-  error: 'buildCommand: bash scripts/render-build.sh'
-  code: 'ERR_ASSERTION'
-  name: 'AssertionError'
-  expected: true
-  actual: false
-  operator: '=='
-  stack: |-
-    TestContext.<anonymous> (file:///home/runner/work/hahadog/hahadog/tests/render-deploy.test.mjs:23:193)
-    Test.runInAsyncScope (node:async_hooks:214:14)
-    Test.run (node:internal/test_runner/test:1047:25)
-    Test.start (node:internal/test_runner/test:944:17)
-    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
-  ...
-# Subtest: Render capacity environment limits rooms, zombies and connections without changing defaults
-ok 37 - Render capacity environment limits rooms, zombies and connections without changing defaults
-  ---
-  duration_ms: 307.442661
-  type: 'test'
-  ...
-# Subtest: server security and movement integrations
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.318398
+  duration_ms: 0.260353
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.543697
+  duration_ms: 0.454357
   type: 'test'
   ...
 1..65
 # tests 69
 # suites 0
-# pass 68
-# fail 1
+# pass 69
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 5951.019211
+# duration_ms 5715.521719
 ~~~
