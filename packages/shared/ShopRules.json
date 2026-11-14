@@ -1,0 +1,7 @@
+{
+  "intermissionMs": 30000,
+  "armorPricePerPoint": 4,
+  "ammoCost": 120,
+  "medkitCost": 150,
+  "medkitHeal": 45
+}

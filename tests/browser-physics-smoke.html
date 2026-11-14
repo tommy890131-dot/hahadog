@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"/><title>DEADLINE FOUR Browser Physics Smoke</title></head>
+<body><h1>V3.9.2 browser physics smoke</h1><pre id="result">RUNNING</pre>
+<script type="module">
+import {FixedPhysicsClock} from '../packages/shared/FixedPhysicsClock.mjs';
+import {MoveReconciler} from '../packages/shared/MoveReconciler.mjs';
+try {
+  const measurements=[];
+  for(const fps of [60,20,10,5]){
+    const clock=new FixedPhysicsClock();let total=0,steps=0;
+    for(let f=0;f<Math.round(1.2*fps);f++)clock.advance(1/fps,dt=>{total+=dt;steps++;});
+    if(steps!==72||Math.abs(total-1.2)>1e-5)throw Error(`FPS ${fps} steps=${steps} simulated=${total}`);
+    measurements.push(`${fps} FPS -> ${steps} fixed steps`);
+  }
+  const reconcile=new MoveReconciler();const seq=reconcile.record(1,2);
+  if(!reconcile.acknowledge(seq,1.2,2).corrected)throw Error('ACK correction missing');
+  const fixed=reconcile.advance(1/60).dx;
+  if(fixed<=0||fixed>=.2)throw Error('Correction not smoothed');
+  document.getElementById('result').dataset.status='PASS';
+  document.getElementById('result').textContent='PASS\n'+measurements.join('\n')+'\nACK smoothing verified';
+} catch(e){
+  document.getElementById('result').dataset.status='FAIL';
+  document.getElementById('result').textContent='FAIL '+e.stack;
+}
+</script></body></html>

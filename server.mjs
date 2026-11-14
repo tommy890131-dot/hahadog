@@ -1,0 +1,653 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { Worker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
+import { splitArmorDamage, gainExperience } from './packages/shared/EconomyRules.mjs';
+import { VERTICAL_LAYOUT, PHYSICS, canOccupyAt, moveHorizontal, stepVertical } from './packages/shared/VerticalCollision.mjs';
+import { navigation, buildZombieBuckets, advanceZombie } from './packages/shared/ZombieNavigation.mjs';
+
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const WEAPONS = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/WeaponConfig.json'), 'utf8'));
+const MAP = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/MapLayout.json'), 'utf8'));
+const SHOP = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/ShopRules.json'), 'utf8'));
+const INTERMISSION_MS = process.env.NODE_ENV === 'test' && process.env.TEST_INTERMISSION_MS ? Number(process.env.TEST_INTERMISSION_MS) : SHOP.intermissionMs;
+const TEST_EMPTY_WAVES = process.env.NODE_ENV === 'test' && process.env.TEST_EMPTY_WAVES === '1';
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
+const TICK_MS = 50;
+const MAX_ZOMBIES = Math.max(8, Math.min(96, Number(process.env.GAME_MAX_ZOMBIES) || 96));
+const WORLD_LIMIT = MAP.halfSize;
+const MAX_ROOMS = Math.max(1, Math.min(100, Number(process.env.GAME_MAX_ROOMS) || 100));
+const MAX_TOTAL_CONNECTIONS = Math.max(4, Math.min(256, Number(process.env.GAME_MAX_CONNECTIONS) || 256));
+const MAX_IP_CONNECTIONS = Math.max(4,Math.min(256,Number(process.env.WS_IP_LIMIT)||64));
+const MAX_MESSAGES_PER_SECOND = 90;
+const MAX_JSON_BYTES = 4096;
+const MAX_INBOUND_BURST = 32768;
+const MAX_INBOUND_BYTES_PER_SECOND = 16384;
+const WS_ALLOWED_ORIGINS = new Set((process.env.WS_ALLOWED_ORIGINS || '')
+  .split(',').map(x=>x.trim().toLowerCase()).filter(Boolean));
+const connectionCounts = new Map();
+const handshakeRates = new Map();
+function connectionAddress(req){
+  // X-Forwarded-For is only trusted when explicitly enabled behind a trusted proxy.
+  if(process.env.TRUST_PROXY === '1') {
+    const forwarded = req.headers['x-forwarded-for'];
+    if(typeof forwarded === 'string' && forwarded.trim())return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+function acceptOrigin(req){
+  const raw=req.headers.origin;
+  // Non-browser test clients may omit Origin; they still face IP + packet quotas.
+  if(raw === undefined)return true;
+  if(typeof raw !== 'string')return false;
+  try {
+    const origin = new URL(raw);
+    if(!['http:','https:'].includes(origin.protocol)||origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash)return false;
+    const host=String(req.headers.host||'').toLowerCase();
+    return (origin.host.toLowerCase()===host) || WS_ALLOWED_ORIGINS.has(origin.origin.toLowerCase());
+  } catch{return false;}
+}
+function allowHandshake(address,now){
+  const rate=handshakeRates.get(address)||{since:now,count:0};
+  if(now-rate.since>10_000){rate.since=now;rate.count=0;}
+  rate.count++;
+  handshakeRates.set(address,rate);
+  // Avoid growing the map forever under address rotation.
+  if(handshakeRates.size>2048){
+    for(const [ip,v] of handshakeRates)if(now-v.since>10_000)handshakeRates.delete(ip);
+    while(handshakeRates.size>4096)handshakeRates.delete(handshakeRates.keys().next().value);
+  }
+  return rate.count<=40;
+}
+
+const rooms = new Map();
+const peers = new Set();
+let nextZombieId = 1;
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const finite = n => typeof n === 'number' && Number.isFinite(n);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const distance2 = (a, b) => Math.hypot(a.x-b.x, a.z-b.z);
+const codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const safe = p => Math.hypot(p.x-MAP.safehouse.x,p.z-MAP.safehouse.z) <= MAP.safehouse.radius;
+// Same static 3-D walls/floors/roof as the browser. The server never trusts client Y.
+const collisionBoxes=VERTICAL_LAYOUT.boxes.filter(b=>b.solid).map(b=>({
+  minX:b.x-b.w/2,maxX:b.x+b.w/2,
+  minY:b.y-b.h/2,maxY:b.y+b.h/2,
+  minZ:b.z-b.d/2,maxZ:b.z+b.d/2
+}));
+function canOccupy(x,z,r=.4){return canOccupyAt(x,z,0,r);}
+function makeCode(){for(let k=0;k<200;k++){
+  const code=Array.from(crypto.randomBytes(5),b=>codeAlphabet[b%codeAlphabet.length]).join('');
+  if(!rooms.has(code))return code;
+}return null;}
+function weapon(id){return typeof id==='string' && Object.hasOwn(WEAPONS,id)?WEAPONS[id]:null;}
+function freshAmmo(id){const w=WEAPONS[id];return {ammo:w.magazine,reserve:w.reserve};}
+function createPlayer(peer,name,slot){
+  const starts=[[-3,-2],[3,-2],[-3,3],[3,3]];const [x,z]=starts[slot]||[0,0];
+  return {id:peer.id,name:String(name||'倖存者').replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,16)||'倖存者',
+    x,z,y:0,vy:0,grounded:true,lastJump:0,yaw:0,pitch:0,hp:100,maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
+    owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},
+    downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:0,lastMoveSeq:0,moveCredit:0.35,lastShove:0,txn:new Map()};
+}
+function activeAmmo(p){return p.inventory[p.weaponId];}
+function publicPlayer(p){const a=activeAmmo(p);return {id:p.id,name:p.name,x:p.x,z:p.z,y:p.y,vy:p.vy,grounded:p.grounded,yaw:p.yaw,pitch:p.pitch,ackMoveSeq:p.lastMoveSeq,
+  hp:p.hp,maxHp:p.maxHp,armor:p.armor,level:p.level,xp:p.xp,nextXp:p.level>=50?0:p.level*150,money:p.money,kills:p.kills,
+  weaponId:p.weaponId,primary:p.primary,secondary:p.secondary,owned:p.owned,ammo:a.ammo,reserve:a.reserve,
+  downed:p.downed,reloading:p.reloadUntil>Date.now(),inSafehouse:safe(p)};}
+function send(peer,msg){peer?.send(msg);}
+function announce(room,obj){for(const peer of room.players.keys())send(peer,obj);}
+function lobbyInfo(room){return {type:'room',code:room.code,hostId:room.hostId,phase:room.phase,wave:room.wave,players:[...room.players.values()].map(publicPlayer)};}
+function syncLobby(room){announce(room,lobbyInfo(room));}
+function joinRoom(peer,code,name){
+  if(peer.room){send(peer,{type:'error',message:'你已加入房間'});return;}
+  const room=rooms.get(code);if(!room){send(peer,{type:'error',message:'找不到房間'});return;}
+  if(room.players.size>=4){send(peer,{type:'error',message:'房間已滿（最多 4 人）'});return;}
+  if(room.phase!=='lobby'){send(peer,{type:'error',message:'房間已開始遊戲'});return;}
+  const p=createPlayer(peer,name,room.players.size);room.players.set(peer,p);peer.room=room;
+  send(peer,{...lobbyInfo(room),type:'joined',selfId:peer.id});syncLobby(room);
+}
+function startWave(room){
+  room.phase='playing';room.wave++;
+  room.pending=TEST_EMPTY_WAVES?0:Math.min(135,24+room.wave*9+room.players.size*7);
+  room.zombies=[];room.nextSpawnAt=Date.now();room.nextWaveAt=0;room.directorPhase='buildup';
+  room.navUpdateAt=0;room.fields=new Map();room.navCursor=0;
+  announce(room,{type:'wave',wave:room.wave,message:`第 ${room.wave} 波：城市屍潮來襲`});
+}
+function startIntermission(room,now){
+  // This is authoritative: the 30-second shopping interval is zombie-free for all clients.
+  room.phase='intermission';room.pending=0;room.zombies=[];room.nextWaveAt=now+INTERMISSION_MS;
+  room.directorPhase='relax';room.fields.clear();room.revive.clear();
+  for(const p of room.players.values()){
+    if(p.downed){p.downed=false;p.hp=Math.min(p.maxHp,40);p.vy=0;p.grounded=true;}
+    else p.hp=clamp(p.hp+20,0,p.maxHp);
+    p.reloadUntil=0;
+    for(const [id,a] of Object.entries(p.inventory))
+      if(WEAPONS[id].category!=='pistol')a.reserve=Math.min(WEAPONS[id].reserve,a.reserve+WEAPONS[id].magazine*2);
+  }
+  announce(room,{type:'intermission',wave:room.wave,nextWave:room.wave+1,remainingMs:INTERMISSION_MS,
+    message:`第 ${room.wave} 波已清除！30 秒安全採購時間，殭屍暫停出現`});
+}
+function snapshot(room,now){
+  room.lastSnapshot=now;
+  announce(room,{type:'snapshot',phase:room.phase,wave:room.wave,remaining:room.pending+room.zombies.length,
+    shopRemainingMs:room.phase==='intermission'?Math.max(0,room.nextWaveAt-now):0,
+    players:[...room.players.values()].map(publicPlayer),
+    zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,kind:z.kind,step:z.step,facing:z.facing}))});
+}
+function startMatch(room){
+  const freshRun=room.phase==='ended';
+  room.wave=0;room.phase='lobby';room.zombies=[];room.pending=0;
+  let i=0;for(const p of room.players.values()){
+    const starts=[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
+    if(freshRun)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
+      owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},txn:new Map()});
+    Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0});
+  }
+  startWave(room);
+}
+function rewardKill(room,player,z,headshot){
+  if(z.rewarded)return;z.rewarded=true;
+  const special=z.kind==='brute',runner=z.kind==='runner';
+  const money=(special?100:runner?45:35)+(headshot?15:0);
+  const xp=(special?120:runner?70:50)+(headshot?25:0);
+  const oldLevel=player.level;
+  player.money=Math.min(1_000_000_000,player.money+money);
+  const progress=gainExperience(player.level,player.xp,xp);
+  player.level=progress.level;player.xp=progress.xp;player.kills++;
+  player.maxHp+=progress.levelUps*5;
+  player.hp=Math.min(player.maxHp,player.hp+progress.levelUps*5);
+  send([...room.players.keys()].find(k=>room.players.get(k)===player),{
+    type:'reward',money,xp,level:player.level,levelUps:player.level-oldLevel,headshot,zombieKind:z.kind,weaponId:player.weaponId});
+}
+function currentReloadMs(p){return Math.round(WEAPONS[p.weaponId].reloadMs*(1-Math.min(.2,(p.level-1)*.02)));}
+function applyReload(p,now){
+  if(!p.reloadUntil||now<p.reloadUntil)return;
+  const w=WEAPONS[p.weaponId],a=activeAmmo(p);
+  const count=w.category==='pistol' ? w.magazine-a.ammo : Math.min(w.magazine-a.ammo,a.reserve);
+  a.ammo+=count;
+  if(w.category!=='pistol')a.reserve-=count;
+  p.reloadUntil=0;
+}
+function buy(room,p,sku,txn){
+  if(typeof txn!=='string'||!/^[\w-]{8,64}$/.test(txn)){return {ok:false,reason:'無效交易編號'};}
+  if(p.txn.has(txn))return p.txn.get(txn);
+  let result={ok:false,reason:'商品不存在'};
+  if(p.downed||room.phase==='ended'){result={ok:false,reason:'目前無法購買'};}
+  else if(room.phase!=='intermission'&&!safe(p)){result={ok:false,reason:'戰鬥期間須回到中央安全屋才可購買'};}
+  else if(sku==='armor'){
+    const missing=Math.max(0,100-p.armor),cost=Math.ceil(missing*SHOP.armorPricePerPoint);
+    if(!missing)result={ok:false,reason:'護甲已滿'};
+    else if(p.money<cost)result={ok:false,reason:`護甲需 $${cost}，金錢不足`};
+    else{p.money-=cost;p.armor=100;result={ok:true,cost,sku};}
+  }else if(sku==='medkit'){
+    const heal=Math.min(SHOP.medkitHeal,Math.max(0,p.maxHp-p.hp));
+    if(!heal)result={ok:false,reason:'生命值已滿'};
+    else if(p.money<SHOP.medkitCost)result={ok:false,reason:'醫療包金錢不足'};
+    else{p.money-=SHOP.medkitCost;p.hp+=heal;result={ok:true,cost:SHOP.medkitCost,sku};}
+  }else if(sku==='ammo'){
+    const w=WEAPONS[p.weaponId],a=activeAmmo(p);
+    if(w.category==='pistol')result={ok:false,reason:'手槍擁有無限備彈'};
+    else if(a.reserve>=w.reserve)result={ok:false,reason:'備彈已滿'};
+    else if(p.money<SHOP.ammoCost)result={ok:false,reason:'彈藥包金錢不足'};
+    else{p.money-=SHOP.ammoCost;a.reserve=w.reserve;result={ok:true,cost:SHOP.ammoCost,sku};}
+  }else{
+    const w=weapon(sku);
+    if(w){
+      if(p.owned.includes(sku))result={ok:false,reason:'已擁有，請使用「裝備」'};
+      else if(p.money<w.price)result={ok:false,reason:`需要 $${w.price}，金錢不足`};
+      else{p.money-=w.price;p.owned.push(sku);p.inventory[sku]=freshAmmo(sku);
+        if(w.category==='pistol')p.secondary=sku;else p.primary=sku;
+        p.weaponId=sku;p.reloadUntil=0;result={ok:true,cost:w.price,sku};}
+    }
+  }
+  p.txn.set(txn,result);if(p.txn.size>128)p.txn.delete(p.txn.keys().next().value);
+  return result;
+}
+function equip(p,id){
+  const w=weapon(id);if(!w||!p.owned.includes(id))return {ok:false,reason:'你沒有這把槍'};
+  if(p.downed)return {ok:false,reason:'倒地時無法切換武器'};
+  // Re-equipping the current weapon must not cancel a reload or reset fire cadence.
+  if(p.weaponId===id)return {ok:true,sku:id};
+  p.weaponId=id;p.reloadUntil=0;
+  return {ok:true,sku:id};
+}
+function hurt(room,p,amount){
+  if(p.downed)return;
+  const result=splitArmorDamage(p.hp,p.armor,amount);
+  const {armorDamage,hpDamage}=result;
+  p.armor=result.armor;p.hp=result.hp;
+  room.damageTimes.push(Date.now());announce(room,{type:'damage',target:p.id,amount:hpDamage,armorDamage});
+  if(p.hp===0){p.downed=true;p.reloadUntil=0;announce(room,{type:'downed',target:p.id});}
+}
+function rayBox(from,dir,box){
+  let low=0,high=125;
+  for(const [axis,min,max] of [['x',box.minX,box.maxX],['y',box.minY,box.maxY],['z',box.minZ,box.maxZ]]){
+    const v=dir[axis],f=from[axis];
+    if(Math.abs(v)<1e-8){if(f<min||f>max)return Infinity;continue;}
+    const a=(min-f)/v,b=(max-f)/v;
+    low=Math.max(low,Math.min(a,b));high=Math.min(high,Math.max(a,b));
+    if(low>high)return Infinity;
+  }
+  return low;
+}
+function raySphere(from,dir,center,r){
+  const ox=center.x-from.x,oy=center.y-from.y,oz=center.z-from.z;
+  const dot=ox*dir.x+oy*dir.y+oz*dir.z;
+  if(dot<0)return Infinity;
+  const diff=ox*ox+oy*oy+oz*oz-dot*dot;
+  if(diff>r*r)return Infinity;
+  return Math.max(0,dot-Math.sqrt(Math.max(0,r*r-diff)));
+}
+function shoot(room,p,now){
+  const w=WEAPONS[p.weaponId],a=activeAmmo(p);
+  if(p.downed||room.phase!=='playing'||p.reloadUntil||now<(p.nextShotAt||0)||a.ammo<=0)return;
+  a.ammo--;p.lastShot=now;p.nextShotAt=now+60000/w.rpm;
+  const spread=w.spread*Math.PI/180;
+  const yaw=p.yaw+rnd(-spread,spread),pitch=p.pitch+rnd(-spread*.7,spread*.7);
+  const dir={x:Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
+  const from={x:p.x,y:p.y+1.52,z:p.z};let wallAt=115;
+  for(const b of collisionBoxes)wallAt=Math.min(wallAt,rayBox(from,dir,b));
+  const hits=[];
+  for(const z of room.zombies){
+    const head=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='brute'?1.85:1.55),z:z.z},z.kind==='brute'?.31:.245);
+    const body=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='brute'?1.12:1.04),z:z.z},z.kind==='brute'?.79:.51);
+    const t=Math.min(head,body);
+    if(Number.isFinite(t)&&t<wallAt && t<110)hits.push({z,t,headshot:head<=body});
+  }
+  hits.sort((a,b)=>a.t-b.t);
+  let hit=false,killed=false,headshot=false;
+  for(const entry of hits.slice(0,w.penetration)){
+    const z=entry.z;if(z.hp<=0)continue;
+    hit=true;headshot ||=entry.headshot;
+    const t=clamp((entry.t-w.falloffStart)/(w.falloffEnd-w.falloffStart),0,1);
+    const dmg=Math.round(w.damage*(1-t*(1-w.minFactor))*(entry.headshot?1.65:1));
+    z.hp-=dmg;z.knockX+=dir.x*w.knockback;z.knockZ+=dir.z*w.knockback;
+    if(z.hp<=0){rewardKill(room,p,z,entry.headshot);killed=true;}
+  }
+  if(killed)room.zombies=room.zombies.filter(z=>z.hp>0);
+  const maxDistance=hits.length?Math.min(wallAt,hits[0].t):wallAt;
+  announce(room,{type:'shot',by:p.id,weaponId:p.weaponId,from,to:{x:from.x+dir.x*maxDistance,y:from.y+dir.y*maxDistance,z:from.z+dir.z*maxDistance},hit,killed,headshot,enemyId:hits[0]?.z.id??null});
+}
+function spawnZombie(room){
+  let pos=null;
+  for(let attempt=0;attempt<45;attempt++){
+    const base=MAP.spawns[Math.floor(rnd(0,MAP.spawns.length))];
+    const x=base.x+rnd(-8,8),z=base.z+rnd(-8,8);
+    if(canOccupy(x,z,.65)&&[...room.players.values()].every(p=>distance2(p,{x,z})>24)){pos={x,z};break;}
+  }
+  if(!pos)return;
+  const n=Math.random(),brute=n<Math.min(.025+room.wave*.009,.11),runner=!brute&&n<.22;
+  const kind=brute?'brute':runner?'runner':'walker';
+  room.zombies.push({id:nextZombieId++,x:pos.x,y:0,vy:0,grounded:true,z:pos.z,kind,hp:brute?180:runner?65:90,
+    speed:(brute?1.9:runner?4.4:2.8)+Math.min(room.wave*.1,.8),attackAt:0,step:rnd(0,8),
+    facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false});
+}
+/**
+ * Authoritative multi-floor navigation: each player gets a 3D flow field.
+ * Each zombie picks the reachable player with the shortest navigation cost,
+ * then adds slight organic steering and spatial-hash crowd separation.
+ */
+// Global fair scheduling: only one expensive navigation request is in-flight
+// across *all* rooms, computed in a worker thread off the game loop.
+let navWorker = null;
+let navWorkerBusy = false;
+let navWorkerFailed = false;
+let navJob = null;
+let navJobCounter = 0;
+let navRoomCursor = 0;
+try {
+  navWorker = new Worker(new URL('./server/NavigationWorker.mjs', import.meta.url));
+  navWorker.on('message', reply => {
+    const job = navJob;
+    if (!job || reply.id !== job.id) return;
+    navJob = null;
+    navWorkerBusy = false;
+    if (reply.error) { console.warn('[NavigationWorker]', reply.error); navWorkerFailed = true; return; }
+    const room = rooms.get(job.code);
+    if (!room || room !== job.room || room.phase !== 'playing' || room.wave !== job.wave) return;
+    const p = [...room.players.values()].find(player => player.id === job.playerId);
+    if (!p || p.downed || navigation.closest(p.x, p.z, p.y) !== reply.goal) return;
+    room.fields.set(p.id, { goal: reply.goal, dist: reply.dist, next: reply.next });
+    p.navGoal = reply.goal;
+    p.navAt = Date.now();
+  });
+  navWorker.on('error', error => {
+    console.warn('[NavigationWorker] unavailable; using limited synchronous fallback', error);
+    navWorkerFailed = true;
+    navWorkerBusy = false;
+    navJob = null;
+  });
+  navWorker.on('exit', code => {
+    if (code !== 0) console.warn('[NavigationWorker] exited:', code);
+    navWorkerFailed = true; navWorkerBusy = false; navJob = null;
+  });
+} catch (error) {
+  navWorkerFailed = true;
+  console.warn('[NavigationWorker] creation failed:', error);
+}
+function scheduleNavigation(now) {
+  if (navWorkerBusy) return;
+  const candidates = [...rooms.values()].filter(room => room.phase === 'playing' && room.zombies.length);
+  if (!candidates.length) return;
+  const start = (navRoomCursor++ % candidates.length);
+  for (let i = 0; i < candidates.length; i++) {
+    const room = candidates[(start + i) % candidates.length];
+    const living = [...room.players.values()].filter(p => !p.downed);
+    for (let n = 0; n < living.length; n++) {
+      const p = living[room.navCursor++ % living.length];
+      const goal = navigation.closest(p.x, p.z, p.y);
+      if (room.fields.has(p.id) && (goal === p.navGoal || now - (p.navAt || 0) < 250)) continue;
+      if (navWorkerFailed) {
+        // Fallback is globally bounded to ONE synchronous computation per tick.
+        room.fields.set(p.id, navigation.routeTo(p));
+        p.navGoal = goal; p.navAt = now;
+        return;
+      }
+      const id = ++navJobCounter;
+      navWorkerBusy = true;
+      navJob = { id, code: room.code, room, wave: room.wave, playerId: p.id };
+      try { navWorker.postMessage({ id, x: p.x, y: p.y, z: p.z }); }
+      catch (error) {
+        console.warn('[NavigationWorker] request failed', error);
+        navWorkerFailed = true; navWorkerBusy = false; navJob = null;
+      }
+      return;
+    }
+  }
+}
+
+function chooseTarget(room,z,living){
+  const cell=navigation.closest(z.x,z.z,z.y);
+  let chosen=null,best=Infinity;
+  for(const p of living){
+    const route=room.fields.get(p.id);
+    const navCost=cell>=0?route?.dist[cell]:Infinity;
+    if(!Number.isFinite(navCost))continue;
+    const cost=navCost + Math.hypot(p.x-z.x,p.z-z.z)*.035;
+    if(cost<best){best=cost;chosen=p;}
+  }
+  if(chosen)return chosen;
+  // A temporarily unreachable player isn't a valid attack target. Fallback
+  // only if both stand at the same height and share local line of sight.
+  return living.find(p=>Math.abs(z.y-p.y)<1.2 &&
+    Math.hypot(z.x-p.x,z.z-p.z)<5 && clearZombieSight(z,p))??null;
+}
+function clearZombieSight(z,p){
+  const ax={x:z.x,y:z.y+1.2,z:z.z};
+  const dx=p.x-z.x,dy=(p.y+1.0)-ax.y,dz=p.z-z.z;
+  const d=Math.hypot(dx,dy,dz);
+  if(d<.001)return true;
+  const dir={x:dx/d,y:dy/d,z:dz/d};
+  return !collisionBoxes.some(b=>rayBox(ax,dir,b)<d-.35);
+}
+function pursue(room,z,target,dt,now,nearby){
+  const field=room.fields.get(target.id);
+  if(!field)return;
+  advanceZombie(z,target,field,nearby,dt,now,z.knockX,z.knockZ);
+  z.knockX*=.77;z.knockZ*=.77;
+}
+function onMessage(peer,msg){
+  if(!msg||typeof msg!=='object'||Array.isArray(msg))return;
+  const now=Date.now();
+  if(msg.type==='ping'){send(peer,{type:'pong',t:finite(msg.t)?msg.t:now});return;}
+  if(msg.type==='create'){
+    if(peer.room)return;
+    if(rooms.size>=MAX_ROOMS){send(peer,{type:'error',message:'伺服器房間已滿'});return;}
+    const code=makeCode();if(!code)return;
+    const room={code,players:new Map(),hostId:peer.id,phase:'lobby',wave:0,zombies:[],pending:0,
+      nextSpawnAt:0,nextWaveAt:0,lastSnapshot:0,damageTimes:[],lastDirectorAt:0,
+      navCursor:0,pressure:0,directorPhase:'buildup',relaxUntil:0,navUpdateAt:0,fields:new Map(),revive:new Map()};
+    rooms.set(code,room);joinRoom(peer,code,msg.name);return;
+  }
+  if(msg.type==='join'){joinRoom(peer,String(msg.code||'').trim().toUpperCase().slice(0,5),msg.name);return;}
+  const room=peer.room,p=room?.players.get(peer);if(!p)return;
+  if(msg.type==='start'){
+    if(peer.id!==room.hostId){send(peer,{type:'error',message:'只有隊長能開始遊戲'});return;}
+    if(room.phase==='lobby'||room.phase==='ended')startMatch(room);
+    return;
+  }
+  if(msg.type==='move'&&room.phase==='playing'&&!p.downed){
+    if(![msg.x,msg.z,msg.yaw,msg.pitch].every(finite))return;
+    const elapsed=now-p.lastMove;
+    // A cumulative movement budget allows network jitter but gives NO free distance per packet.
+    // Fast packet spam and repeated 35ms packets cannot increase average speed.
+    if(elapsed>=30){
+      const maxSpeed=7.5*(1-WEAPONS[p.weaponId].speedPenalty);
+      p.moveCredit=Math.min(maxSpeed*.17,(p.moveCredit||0)+maxSpeed*clamp(elapsed/1000,0,.17));
+      const dx=msg.x-p.x,dz=msg.z-p.z,requested=Math.hypot(dx,dz);
+      if(requested<=p.moveCredit+1e-6){
+        const moved=moveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded);
+        p.moveCredit=Math.max(0,p.moveCredit-Math.hypot(moved.x-p.x,moved.z-p.z));
+        p.x=moved.x;p.z=moved.z;
+        if(p.grounded)p.y=moved.feet;
+      }
+      p.lastMove=now;
+      if(Number.isSafeInteger(msg.seq) && msg.seq > p.lastMoveSeq && msg.seq < 2_000_000_000) p.lastMoveSeq=msg.seq;
+    }
+    // msg.y is intentionally ignored; vertical authority remains on the server.
+    p.yaw=((msg.yaw%(2*Math.PI))+2*Math.PI)%(2*Math.PI);
+    p.pitch=clamp(msg.pitch,-1.38,1.38);return;
+  }
+  if(msg.type==='jump'&&room.phase==='playing'&&!p.downed){
+    if(p.grounded && now-p.lastJump>400){
+      p.vy=PHYSICS.jumpVelocity;p.grounded=false;p.lastJump=now;
+    }
+    return;
+  }
+  if(msg.type==='shoot'){shoot(room,p,now);return;}
+  if(msg.type==='reload'&&!p.downed&&room.phase==='playing'&&!p.reloadUntil){
+    const w=WEAPONS[p.weaponId],a=activeAmmo(p);
+    if(a.ammo<w.magazine && (a.reserve>0||w.category==='pistol')){
+      p.reloadUntil=now+currentReloadMs(p);
+      announce(room,{type:'reload',by:p.id,weaponId:p.weaponId,reloadMs:currentReloadMs(p)});
+    }
+    return;
+  }
+  if(msg.type==='shove'&&room.phase==='playing'&&!p.downed&&now-p.lastShove>=650){
+    p.lastShove=now;let hits=0;
+    const fx=Math.sin(p.yaw),fz=-Math.cos(p.yaw);
+    for(const z of [...room.zombies]){
+      const dx=z.x-p.x,dz=z.z-p.z,dist=Math.hypot(dx,dz);
+      if(dist<.001||dist>2||Math.abs(z.y-p.y)>1.25||(dx*fx+dz*fz)/dist<Math.cos(Math.PI/6))continue;
+      const from={x:p.x,y:p.y+1.15,z:p.z},dir={x:dx/dist,y:0,z:dz/dist};
+      if(collisionBoxes.some(b=>rayBox(from,dir,b)<dist))continue;
+      z.knockX+=(dx/dist)*7;z.knockZ+=(dz/dist)*7;z.hp-=10;hits++;
+      if(z.hp<=0)rewardKill(room,p,z,false);
+    }
+    room.zombies=room.zombies.filter(z=>z.hp>0);
+    announce(room,{type:'shove',by:p.id,hits});return;
+  }
+  if(msg.type==='buy'||msg.type==='equip'){
+    const result=msg.type==='buy'?buy(room,p,msg.sku,msg.txn):equip(p,msg.weaponId);
+    send(peer,{type:'shopResult',action:msg.type,sku:msg.type==='buy'?msg.sku:msg.weaponId,...result});
+    if(result.ok && room.phase==='lobby')syncLobby(room);
+    return;
+  }
+  if(msg.type==='revive'&&msg.holding===true&&!p.downed&&room.phase==='playing'){
+    const target=[...room.players.values()].find(t=>t!==p&&t.downed&&distance2(t,p)<2.6&&Math.abs(t.y-p.y)<1.65);
+    if(!target){room.revive.delete(p.id);return;}
+    const prev=room.revive.get(p.id);
+    const progress=prev&&prev.target===target.id&&now-prev.lastBeat<350?
+      {...prev,lastBeat:now}:{target:target.id,started:now,lastBeat:now};
+    room.revive.set(p.id,progress);
+    if(now-progress.started>=2000){target.downed=false;target.hp=40;target.reloadUntil=0;
+      room.revive.delete(p.id);announce(room,{type:'revived',by:p.id,target:target.id});}
+    return;
+  }
+}
+function onClose(peer){
+  peers.delete(peer);const room=peer.room;if(!room)return;
+  room.players.delete(peer);room.revive.delete(peer.id);peer.room=null;
+  if(room.players.size===0){rooms.delete(room.code);return;}
+  if(room.hostId===peer.id)room.hostId=room.players.values().next().value.id;
+  syncLobby(room);
+  if(room.phase==='playing'&&[...room.players.values()].every(p=>p.downed)){
+    room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});}
+}
+function tick(){
+  const now=Date.now();
+  for(const room of rooms.values()){
+    if(room.phase==='intermission'){
+      if(now>=room.nextWaveAt)startWave(room);
+      else{if(now-room.lastSnapshot>=100)snapshot(room,now);continue;}
+    }
+    if(room.phase!=='playing')continue;
+    const players=[...room.players.values()],living=players.filter(p=>!p.downed);
+    for(const p of players){
+      applyReload(p,now);
+      if(!p.downed){
+        const result=stepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000);
+        p.y=result.y;p.vy=result.vy;p.grounded=result.grounded;
+      }
+    }
+    if(room.pending>0 && now>=room.nextSpawnAt&&room.zombies.length<MAX_ZOMBIES&&room.directorPhase!=='relax'){
+      spawnZombie(room);room.pending--;room.nextSpawnAt=now+Math.max(95,200-room.wave*8);
+    }
+    const zombieBuckets=buildZombieBuckets(room.zombies);
+    for(const z of room.zombies){
+      if(!living.length)break;
+      const target=chooseTarget(room,z,living);
+      if(!target)continue;
+      const xzDist=distance2(z,target),heightDiff=Math.abs(z.y-target.y);
+      const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target);
+      if(!canAttack)pursue(room,z,target,TICK_MS/1000,now,zombieBuckets.near(z));
+      else if(now>z.attackAt){z.attackAt=now+1100;
+        hurt(room,target,z.kind==='brute'?22:z.kind==='runner'?14:10);}
+    }
+    if(now-room.lastDirectorAt>=2000){
+      room.lastDirectorAt=now;
+      room.damageTimes=room.damageTimes.filter(t=>now-t<20000);
+      const avg=players.reduce((s,p)=>s+p.hp/p.maxHp,0)/Math.max(1,players.length);
+      room.pressure=Math.round(70*(1-avg)+30*Math.min(1,room.damageTimes.length/Math.max(1,players.length*3)));
+      if(room.pressure>80&&room.directorPhase!=='relax'){
+        room.directorPhase='relax';room.relaxUntil=now+12000;
+      }else if(room.directorPhase==='relax'&&now>=room.relaxUntil&&room.pressure<55){room.directorPhase='buildup';}
+      else if(room.directorPhase!=='relax'&&room.zombies.length>=32){room.directorPhase='peak';}
+      announce(room,{type:'director',pressure:room.pressure,directorPhase:room.directorPhase});
+    }
+    if(players.length && players.every(p=>p.downed)){
+      room.phase='ended';announce(room,{type:'gameOver',wave:room.wave});syncLobby(room);continue;
+    }
+    if(room.pending===0&&room.zombies.length===0){
+      startIntermission(room,now);
+      snapshot(room,now);
+      continue;
+    }
+    if(now-room.lastSnapshot>=100)snapshot(room,now);
+  }
+  scheduleNavigation(now);
+}
+setInterval(tick,TICK_MS);
+
+// WebSocket transport remains compatible with the deployed V1 room protocol.
+// Small dependency-free WebSocket RFC 6455 implementation. Browser frames are masked.
+class Peer {
+  constructor(socket,address){this.socket=socket;this.address=address;this.id=crypto.randomUUID().slice(0,8);this.buffer=Buffer.alloc(0);this.room=null;this.closed=false;
+    this.messageTokens=120;this.lastTokenAt=Date.now();
+    this.byteTokens=MAX_INBOUND_BURST;this.lastByteAt=Date.now();
+    socket.on('data', chunk=>this.receive(chunk));socket.on('error',()=>this.close());socket.on('close',()=>this.close());
+  }
+  send(obj){if(this.closed || this.socket.destroyed || this.socket.writableLength>256_000)return;
+    this.frame(1,Buffer.from(JSON.stringify(obj)));
+  }
+  frame(op,payload){if(this.closed||this.socket.destroyed)return;let head;
+    if(payload.length<126){head=Buffer.from([0x80|op,payload.length]);}
+    else if(payload.length<65536){head=Buffer.alloc(4);head[0]=0x80|op;head[1]=126;head.writeUInt16BE(payload.length,2);}
+    else{head=Buffer.alloc(10);head[0]=0x80|op;head[1]=127;head.writeBigUInt64BE(BigInt(payload.length),2);}
+    this.socket.write(Buffer.concat([head,payload]));
+  }
+  receive(chunk){
+    if(this.closed)return;
+    const nowBytes=Date.now();
+    this.byteTokens=Math.min(MAX_INBOUND_BURST,this.byteTokens+
+      Math.max(0,nowBytes-this.lastByteAt)*MAX_INBOUND_BYTES_PER_SECOND/1000);
+    this.lastByteAt=nowBytes;
+    if(chunk.length>this.byteTokens){this.close();return;}
+    this.byteTokens-=chunk.length;
+    this.buffer=Buffer.concat([this.buffer,chunk]);
+    if(this.buffer.length>131072){this.close();return;}
+    while(this.buffer.length>=2){
+      const b0=this.buffer[0],b1=this.buffer[1],opcode=b0&15,masked=!!(b1&0x80);
+      if(!(b0&0x80)||!masked){this.close();return;}
+      let len=b1&127,off=2;
+      if(len===126){if(this.buffer.length<4)return;len=this.buffer.readUInt16BE(2);off=4;}
+      else if(len===127){if(this.buffer.length<10)return;const n=this.buffer.readBigUInt64BE(2);if(n>65536n){this.close();return;}len=Number(n);off=10;}
+      if((opcode===1 && len>MAX_JSON_BYTES) || (opcode===9 && len>125) || len>65536){this.close();return;}
+      if(this.buffer.length<off+4+len)return;
+      const mask=this.buffer.subarray(off,off+4);off+=4;
+      const payload=Buffer.from(this.buffer.subarray(off,off+len));this.buffer=this.buffer.subarray(off+len);
+      for(let i=0;i<payload.length;i++)payload[i]^=mask[i%4];
+      if(opcode===8){this.close();return;}
+      if(opcode===9){this.frame(10,payload);continue;}
+      if(opcode===10)continue;
+      if(opcode!==1){this.close();return;}
+      const now=Date.now();
+      this.messageTokens=Math.min(120,this.messageTokens+Math.max(0,now-this.lastTokenAt)*MAX_MESSAGES_PER_SECOND/1000);
+      this.lastTokenAt=now;
+      if(this.messageTokens<1){this.close();return;}
+      this.messageTokens-=1;
+      try{onMessage(this,JSON.parse(payload.toString('utf8')));}catch{}
+    }
+  }
+  close(){if(this.closed)return;this.closed=true;onClose(this);
+    const count=connectionCounts.get(this.address)||0;
+    if(count<=1)connectionCounts.delete(this.address);else connectionCounts.set(this.address,count-1);
+    this.socket.destroy();}
+}
+const DIST=path.join(ROOT,'apps/client/dist');
+const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
+  '.css':'text/css; charset=utf-8','.json':'application/json',
+  '.glb':'model/gltf-binary','.wasm':'application/wasm','.png':'image/png',
+  '.svg':'image/svg+xml','.jpg':'image/jpeg','.webp':'image/webp',
+  '.wav':'audio/wav','.ktx2':'image/ktx2','.hdr':'image/vnd.radiance','.woff2':'font/woff2'};
+const server=http.createServer((req,res)=>{
+  let url;
+  try {url=new URL(req.url||'/','http://localhost');}
+  catch{res.writeHead(400);res.end();return;}
+  if(url.pathname==='/health'){
+    res.writeHead(200,{'content-type':'application/json'});
+    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,rooms:rooms.size,players:peers.size,maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS}));return;
+  }
+  if(req.method!=='GET'&&req.method!=='HEAD'){
+    res.writeHead(405);res.end();return;
+  }
+  let pathname;
+  try{pathname=decodeURIComponent(url.pathname);}catch{res.writeHead(400);res.end();return;}
+  let full=path.resolve(DIST,`.${pathname}`);
+  if(!full.startsWith(DIST+path.sep) && full!==DIST){res.writeHead(403);res.end();return;}
+  if(pathname==='/' || !path.extname(pathname))full=path.join(DIST,'index.html');
+  fs.readFile(full,(err,data)=>{
+    if(err){res.writeHead(404);res.end('File not found');return;}
+    res.writeHead(200,{'content-type':MIME[path.extname(full)]||'application/octet-stream',
+      'cache-control':full.includes('/assets/')?'public, max-age=31536000, immutable':'no-cache',
+      'x-content-type-options':'nosniff'});
+    res.end(req.method==='HEAD'?undefined:data);
+  });
+});
+server.on('upgrade',(req,socket)=>{
+  const key=req.headers['sec-websocket-key'];
+  const address=connectionAddress(req);
+  if(!acceptOrigin(req) || peers.size>=MAX_TOTAL_CONNECTIONS ||
+      (connectionCounts.get(address)||0)>=MAX_IP_CONNECTIONS ||
+      !allowHandshake(address,Date.now())){
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;
+  }
+  if(req.url!=='/ws' || req.headers.upgrade?.toLowerCase()!=='websocket' || typeof key!=='string' || !/^[A-Za-z0-9+/]{22}==$/.test(key)){
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');socket.destroy();return;
+  }
+  const accept=crypto.createHash('sha1').update(key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');
+  const peer=new Peer(socket,address);peers.add(peer);
+  connectionCounts.set(address,(connectionCounts.get(address)||0)+1);
+  send(peer,{type:'hello',id:peer.id,version:'3.9.2-physics-ws-worker'});
+});
+// Do not mark a Render deployment healthy when the Vite distribution is absent.
+if (process.env.NODE_ENV === 'production' && !fs.existsSync(path.join(DIST, 'index.html'))) {
+  console.error('[Startup] Vite distribution is missing: run the Render build command before starting.');
+  process.exit(1);
+}
+server.listen(PORT,HOST,()=>console.log(`DEADLINE FOUR running at http://localhost:${PORT}`));
+process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
