@@ -26,8 +26,8 @@ import './style.css';
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <div id="overlay"><div class="panel">
-  <div class="eyebrow">DEADLINE FOUR · V3.9.2 · TACTICAL ARMORY</div>
-  <h1>末日防線 <span>V3.9.2</span></h1>
+  <div class="eyebrow">DEADLINE FOUR · V3.11 · SURVIVAL</div>
+  <h1>末日防線 <span>V3.11</span></h1>
   <p class="desc">FOUR SURVIVORS · ONE LAST NIGHT</p>
   <div class="loading-track"><div id="loading-bar"></div></div>
   <div id="loading-text">初始化夜間城市…</div><p id="connection" class="status">伺服器連線中</p>
@@ -46,7 +46,7 @@ app.innerHTML=`
   <p id="notice" class="status"></p><p class="hint">WASD 移動 · Space 跳躍 · Shift 奔跑 · 左鍵射擊 · 右鍵瞄準 · Q 技能 · V 推擊 · R 換彈 · B 商店 · F8 畫質模式 · Tab 戰績</p>
   <div id="asset-label" class="status"></div>
 </div></div>
-<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.9.2 · PHYSICS / SECURITY / NAV</small></div>
+<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.11 · SURVIVAL / COOP</small></div>
   <div id="mission">WAVE 01</div><div id="squad"></div><div id="feedback">小隊整備中</div><div id="performance"></div></div>
 <div id="player-hud" class="hidden"><div class="currency"><span id="money">$600</span><span id="level">LV 1</span></div>
   <div class="stat-label">護甲 <span id="armor-value">0 / 100</span></div><div class="stat-track armor-track"><div id="armor-fill"></div></div>
@@ -395,6 +395,12 @@ window.addEventListener('mouseup',event=>{
 });
 window.addEventListener('blur',()=>{primaryHeld=false;aimHeld=false;aim.setRightButtonHeld(false);updateSensitivity();});
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+renderer.domElement.addEventListener('wheel',event=>{
+  if(aimHeld&&selectedId==='sniper_rifle'&&controller.controls.isLocked){
+    event.preventDefault();
+    if(aim.cycleScope(event.deltaY>0?1:-1))alertMessage('狙擊鏡倍率已切換');
+  }
+},{passive:false});
 window.addEventListener('keydown',event=>{
   if(event.code==='KeyQ'&&!event.repeat&&network.session.phase==='playing'){network.send({type:'skill'});return;}
   if(event.code==='KeyV'&&!event.repeat&&network.session.phase==='playing'&&performance.now()-lastShove>650){
