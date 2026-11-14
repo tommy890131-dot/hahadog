@@ -20,13 +20,36 @@ jobs:
           node-version: '22'
       - name: Extract verified original sources
         run: node bootstrap.mjs
-      - name: Preserve source tree on development branch
+      - name: Verify extracted sources
+        shell: bash
         run: |
+          set -euo pipefail
+          for path in server.mjs scripts/render-build.sh apps/client/src/main.ts tests/physics-security-regression.test.mjs; do
+            test -f "$path" || { echo "::error::Missing extracted $path"; exit 1; }
+          done
+          echo "All essential game sources extracted"
+      - name: Commit extracted sources only on development branch
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f server.mjs scripts/ apps/ tests/ packages/ public/ 2>/dev/null || true
-          git add -f package.json package-lock.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then
-            git commit -m "build(v3.11): unpack verified game source for integration"
-            git push origin HEAD:feature/v3.11-survival
+          added=0
+          for path in server.mjs scripts apps tests packages public package.json package-lock.json; do
+            if [[ -e "$path" ]]; then
+              git add -f -A -- "$path"
+              added=$((added + 1))
+            fi
+          done
+          if [[ "$added" -lt 4 ]]; then
+            echo "::error::Too few source paths were staged"
+            exit 1
           fi
+          echo "Staged source paths: $added"
+          git diff --cached --stat
+          if git diff --cached --quiet; then
+            echo "::error::No extracted sources staged: check ignore rules, archive layout and existing commits"
+            exit 1
+          fi
+          git commit -m "build(v3.11): unpack verified V3.9.2 game source"
+          git push origin HEAD:feature/v3.11-survival
