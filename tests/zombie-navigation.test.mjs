@@ -80,7 +80,7 @@ test('eight zombies separate into a moving group while navigating a roof ramp',(
     for(const z of zombies){
       if(reached.has(z.id))continue;
       advanceZombie(z,target,field,buckets.near(z),.05,i*50);
-      assert.ok(canOccupyAt(z.x,z.z,z.y,.36));
+      assert.ok(canOccupyAt(z.x,z.z,z.y,.36),`zombie ${z.id} off navigation at tick ${i}: ${JSON.stringify({x:z.x,y:z.y,z:z.z,routeIndex:z.routeIndex,routeLength:z.route?.length,waypoint:z.route?.[z.routeIndex],targetX:z.targetX,targetZ:z.targetZ})}`);
       if(near(z,target,1.7))reached.add(z.id);
     }
     if(i%60===0){
