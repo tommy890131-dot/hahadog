@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type {ZombieRecord} from '../network/Multiplayer';
+import {RiggedEnemyLibrary,type AnimatedEnemy,type RigFamily} from './RiggedZombie';
 
 type Track = ZombieRecord & {tx:number;ty:number;tz:number;tf:number};
 type Family='walker'|'runner'|'brute'|'spitter'|'boss';
@@ -32,6 +33,9 @@ export class ZombieCrowd {
   private readonly batches=new Map<Family,FamilyBatch>();
   private readonly tracks=new Map<number,Track>();
   private readonly loader=new GLTFLoader();
+  private readonly rigLibrary:RiggedEnemyLibrary;
+  private readonly rigged=new Map<number,AnimatedEnemy>();
+  private readonly MAX_RIGGED=12;
   private readonly dummy=new THREE.Object3D();
   private readonly viewProj=new THREE.Matrix4();
   private readonly frustum=new THREE.Frustum();
@@ -49,12 +53,13 @@ export class ZombieCrowd {
 
   constructor(scene:THREE.Scene){
     this.scene=scene;
+    this.rigLibrary=new RiggedEnemyLibrary(scene);
     // Draw simple placeholders only until the validated custom assets finish loading.
     // Assets stay in use across all game waves and are not reloaded each snapshot.
     for(const family of FAMILIES)this.installBatch(family,
       this.baseFallback.clone(),
       new THREE.MeshStandardMaterial({color:family==='boss'?0x9a4248:0x67716c,roughness:.85}));
-    this.assetsReady=this.loadAll();
+    this.assetsReady=Promise.all([this.loadAll(),this.rigLibrary.ready()]).then(()=>{});
   }
 
   private installBatch(family:Family,geometry:THREE.BufferGeometry,material:THREE.MeshStandardMaterial):void{
@@ -158,7 +163,11 @@ export class ZombieCrowd {
       else this.tracks.set(zombie.id,{...zombie,y:zombie.y??0,tx:zombie.x,ty:zombie.y??0,
         tz:zombie.z,tf:zombie.facing});
     }
-    for(const key of this.tracks.keys())if(!active.has(key))this.tracks.delete(key);
+    for(const key of this.tracks.keys())if(!active.has(key)){
+      this.tracks.delete(key);
+      const rig=this.rigged.get(key);
+      if(rig){this.rigLibrary.remove(rig);this.rigged.delete(key);}
+    }
   }
 
   render(dt:number,camera:THREE.Camera,detailDistance=42,visibleDistance=115):void{
@@ -173,7 +182,16 @@ export class ZombieCrowd {
     this.detailedCount=0;this.distantCount=0;
     const visibleSq=visibleDistance*visibleDistance;
     const detailSq=detailDistance*detailDistance;
-    for(const zombie of this.tracks.values()){
+    const activeRigs=new Set<number>();
+    // Prefer Boss and closest threats for expensive animated skinning.
+    const sorted=[...this.tracks.values()].sort((a,b)=>{
+      if(a.kind==='boss'&&b.kind!=='boss')return -1;
+      if(b.kind==='boss'&&a.kind!=='boss')return 1;
+      const da=(a.x-camera.position.x)**2+(a.z-camera.position.z)**2;
+      const db=(b.x-camera.position.x)**2+(b.z-camera.position.z)**2;
+      return da-db;
+    });
+    for(const zombie of sorted){
       zombie.x=THREE.MathUtils.lerp(zombie.x,zombie.tx,alpha);
       zombie.y=THREE.MathUtils.lerp(zombie.y,zombie.ty,alpha);
       zombie.z=THREE.MathUtils.lerp(zombie.z,zombie.tz,alpha);
@@ -188,6 +206,22 @@ export class ZombieCrowd {
       this.sphere.center.set(zombie.x,zombie.y+height*.5,zombie.z);
       this.sphere.radius=Math.max(1.3,height*.64);
       if(!this.frustum.intersectsSphere(this.sphere))continue;
+      // Up to 12 nearest threats use real skeletal animation; the rest
+      // retain GPU-instanced H17 CrowdStatic GLBs for 60 FPS targeting.
+      const nearRigDistance=Math.min(detailDistance,28);
+      if(distance<=nearRigDistance*nearRigDistance){
+        let rig=this.rigged.get(zombie.id);
+        if(!rig&&this.rigged.size<this.MAX_RIGGED){
+          rig=this.rigLibrary.create(family as RigFamily,zombie.id)??undefined;
+          if(rig)this.rigged.set(zombie.id,rig);
+        }
+        if(rig){
+          activeRigs.add(zombie.id);
+          rig.update(zombie,step);
+          this.detailedCount++;
+          continue;
+        }
+      }
       const index=this.countPerFamily.get(family)??0;
       if(index>=this.MAX)continue;
       const batch=this.batches.get(family)!;
@@ -210,6 +244,9 @@ export class ZombieCrowd {
       if(distance<=detailSq)this.detailedCount++;
       else this.distantCount++;
     }
+    for(const [id,rig] of this.rigged)if(!activeRigs.has(id)){
+      this.rigLibrary.remove(rig);this.rigged.delete(id);
+    }
     this.count=this.detailedCount+this.distantCount;
     for(const family of FAMILIES){
       const mesh=this.batches.get(family)!.mesh;
@@ -224,6 +261,8 @@ export class ZombieCrowd {
   dispose():void{
     this.disposed=true;
     this.tracks.clear();
+    for(const rig of this.rigged.values())this.rigLibrary.remove(rig);
+    this.rigged.clear();this.rigLibrary.dispose();
     for(const batch of this.batches.values()){
       this.scene.remove(batch.mesh);
       batch.mesh.dispose();
