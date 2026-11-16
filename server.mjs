@@ -10,7 +10,7 @@ import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import { splitArmorDamage, gainExperience } from './packages/shared/EconomyRules.mjs';
 import { VERTICAL_LAYOUT, PHYSICS, canOccupyAt, moveHorizontal, stepVertical } from './packages/shared/VerticalCollision.mjs';
-import { navigation, buildZombieBuckets, advanceZombie } from './packages/shared/ZombieNavigation.mjs';
+import { navigation, buildZombieBuckets, advanceZombie, directPursuitPossible } from './packages/shared/ZombieNavigation.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const WEAPONS = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/WeaponConfig.json'), 'utf8'));
@@ -141,7 +141,7 @@ function snapshot(room,now){
   announce(room,{type:'snapshot',phase:room.phase,wave:room.wave,remaining:room.pending+room.zombies.length,
     shopRemainingMs:room.phase==='intermission'?Math.max(0,room.nextWaveAt-now):0,
     players:[...room.players.values()].map(publicPlayer),
-    zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing})),
+    zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing,moving:z.moving===true,attacking:Date.now()-(z.lastAttackAt??0)<420})),
     defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
     bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0});
 }
@@ -415,10 +415,15 @@ function chooseTarget(room,z,living){
     if(cost<best){best=cost;chosen=p;}
   }
   if(chosen)return chosen;
-  // A temporarily unreachable player isn't a valid attack target. Fallback
-  // only if both stand at the same height and share local line of sight.
-  return living.find(p=>Math.abs(z.y-p.y)<1.2 &&
-    Math.hypot(z.x-p.x,z.z-p.z)<5 && clearZombieSight(z,p))??null;
+  // Don't freeze enemies while a navigation worker result is pending.
+  let nearest=null,nearestDistance=Infinity;
+  for(const p of living){
+    const dist=distance2(z,p);
+    if(dist<nearestDistance&&directPursuitPossible(z,p,10)&&clearZombieSight(z,p)){
+      nearest=p;nearestDistance=dist;
+    }
+  }
+  return nearest;
 }
 function clearZombieSight(z,p){
   const ax={x:z.x,y:z.y+1.2,z:z.z};
@@ -430,7 +435,7 @@ function clearZombieSight(z,p){
 }
 function pursue(room,z,target,dt,now,nearby){
   const field=room.fields.get(target.id);
-  if(!field)return;
+  if(!field&&!directPursuitPossible(z,target))return;
   advanceZombie(z,target,field,nearby,dt,now,z.knockX,z.knockZ);
   z.knockX*=.77;z.knockZ*=.77;
 }
@@ -682,7 +687,7 @@ function tick(){
       const xzDist=distance2(z,target),heightDiff=Math.abs(z.y-target.y);
       const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target);
       if(!canAttack)pursue(room,z,target,TICK_MS/1000,now,zombieBuckets.near(z));
-      else if(now>z.attackAt){z.attackAt=now+1100;
+      else if(now>z.attackAt){z.attackAt=now+1100;z.lastAttackAt=now;
         hurt(room,target,SPECIALS[z.kind]?.damage??(z.kind==='brute'?22:z.kind==='runner'?14:10));}
       if(V311&&(z.kind==='spitter'||z.kind==='screamer'||z.kind==='boss')&&now>=z.abilityAt){
         const spec=SPECIALS[z.kind];z.abilityAt=now+spec.intervalMs;
