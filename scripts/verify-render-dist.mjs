@@ -11,7 +11,8 @@ else {
 }
 for(const file of ['packages/shared/ZombieNavCache.br','server/NavigationWorker.mjs',
   'apps/client/dist/basis/basis_transcoder.wasm',
-  'apps/client/dist/draco/draco_decoder.wasm']){
+  'apps/client/dist/draco/draco_decoder.wasm',
+  ...['walker','runner','brute','spitter','boss'].map(name=>'apps/client/dist/models/enemies/'+name+'.glb')]){
   if(!existsSync(resolve(file)))missing.push(file);
 }
 if(missing.length){console.error('[Render] Missing build artifacts:',missing);process.exit(1)}
