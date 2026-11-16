@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {createRound,enterPlayer,setPlayerState,completeObjective,stepRound,computeThreat} from './v311/survival-round.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
+import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
 import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
 import {SPECIALS,DEFENSES,RARITIES,chooseSpecial,bossPhase,lootRarity,validPlacement,claimLoot,canTurretShoot,nextEvent} from './v311/GameplaySystems.mjs';
 import fs from 'node:fs';
@@ -285,8 +286,9 @@ function raySphere(from,dir,center,r){
 function shoot(room,p,now){
   const w=WEAPONS[p.weaponId],a=activeAmmo(p);
   if(p.downed||room.phase!=='playing'||p.reloadUntil||now<(p.nextShotAt||0)||a.ammo<=0)return;
-  a.ammo--;p.lastShot=now;p.nextShotAt=now+60000/w.rpm;
-  const spread=w.spread*(V311&&p.aiming?.35:1)*Math.PI/180;
+  const buffs=V311?classShotModifiers(p,now):{damage:1,spread:1,cadence:1,headshot:1};
+  a.ammo--;p.lastShot=now;p.nextShotAt=now+60000/w.rpm*buffs.cadence;
+  const spread=w.spread*(V311&&p.aiming?.35:1)*buffs.spread*Math.PI/180;
   const yaw=p.yaw+rnd(-spread,spread),pitch=p.pitch+rnd(-spread*.7,spread*.7);
   const dir={x:Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
   const from={x:p.x,y:p.y+1.52,z:p.z};let wallAt=115;
@@ -306,7 +308,7 @@ function shoot(room,p,now){
     const z=entry.z;if(z.hp<=0)continue;
     hit=true;headshot ||=entry.headshot;
     const t=clamp((entry.t-w.falloffStart)/(w.falloffEnd-w.falloffStart),0,1);
-    const dmg=Math.round(w.damage*(1+(p.weaponLevel||0)*.12)*(1-t*(1-w.minFactor))*(entry.headshot?(V311&&p.weaponId==='sniper'?2.5:1.65):1));
+    const dmg=Math.round(w.damage*(1+(p.weaponLevel||0)*.12)*(1-t*(1-w.minFactor))*buffs.damage*(entry.headshot?(V311&&p.weaponId==='sniper'?2.5:1.65)*buffs.headshot:1));
     z.hp-=dmg;z.knockX+=dir.x*w.knockback;z.knockZ+=dir.z*w.knockback;
     if(z.hp<=0){rewardKill(room,p,z,entry.headshot);killed=true;}
   }
@@ -472,7 +474,7 @@ function onMessage(peer,msg){
     room.levelIndex=nextStageIndex(room.levelIndex,action);
     startMatch(room,{preserveCampaign});return;
   }
-  if(V311&&msg.type==='selectClass'&&room.phase==='lobby'&&typeof msg.classId==='string'&&Object.hasOwn(CLASSES,msg.classId)){
+  if(V311&&msg.type==='selectClass'&&room.phase==='lobby'&&validClass(msg.classId)){
     p.classId=msg.classId;syncLobby(room);return;
   }
   if(V311&&msg.type==='aim'&&typeof msg.active==='boolean'){
