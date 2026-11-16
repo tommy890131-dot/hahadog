@@ -1,8 +1,8 @@
 # V3.11 CI report
-Source commit: 465297091133a321c39dee3a3a742880a69b11fb
+Source commit: 2577a72826d0078f791587035434b46d72a02b52
 Rules: success
 TypeScript/Vite: success
-Existing game regression: failure
+Existing game regression: success
 
 ## Build output (tail)
 ~~~
@@ -27,14 +27,14 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.59s[39m
+[32m✓ built in 2.12s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: M249 and PKM have extra viewmodel firing motion and gun flash
 ok 36 - M249 and PKM have extra viewmodel firing motion and gun flash
   ---
-  duration_ms: 0.142315
+  duration_ms: 0.236415
   type: 'test'
   ...
 1..36
@@ -45,56 +45,28 @@ ok 36 - M249 and PKM have extra viewmodel firing motion and gun flash
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4395.39684
+# duration_ms 4549.072109
 ~~~
 ## Regression test output (tail)
 ~~~
-  ...
-# Subtest: eight zombies separate into a moving group while navigating a roof ramp
-not ok 62 - eight zombies separate into a moving group while navigating a roof ramp
-  ---
-  duration_ms: 133.79435
-  type: 'test'
-  location: '/home/runner/work/hahadog/hahadog/tests/zombie-navigation.test.mjs:74:1'
-  failureType: 'testCodeFailure'
-  error: |-
-    The expression evaluated to a falsy value:
-    
-      assert.ok(canOccupyAt(z.x,z.z,z.y,.36))
-    
-  code: 'ERR_ASSERTION'
-  name: 'AssertionError'
-  expected: true
-  actual: false
-  operator: '=='
-  stack: |-
-    TestContext.<anonymous> (file:///home/runner/work/hahadog/hahadog/tests/zombie-navigation.test.mjs:83:14)
-    Test.runInAsyncScope (node:async_hooks:214:14)
-    Test.run (node:internal/test_runner/test:1047:25)
-    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
-    Test.postRun (node:internal/test_runner/test:1173:19)
-    Test.run (node:internal/test_runner/test:1101:12)
-    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
-  ...
-# Subtest: navigation targets can be updated when a player moves to a different floor
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.263546
+  duration_ms: 0.370116
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.617384
+  duration_ms: 0.649441
   type: 'test'
   ...
 1..65
 # tests 69
 # suites 0
-# pass 68
-# fail 1
+# pass 69
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 5890.978733
+# duration_ms 6317.865403
 ~~~
