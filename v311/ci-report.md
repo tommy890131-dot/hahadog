@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: add2fe61292eb68dbd50d0db4b32d3b0b5733010
+Source commit: 465297091133a321c39dee3a3a742880a69b11fb
 Rules: success
 TypeScript/Vite: success
 Existing game regression: failure
@@ -16,36 +16,36 @@ Existing game regression: failure
 
 [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 65 modules transformed.
+[32m✓[39m 66 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
 [2mdist/[22m[2massets/[22m[35mindex-Da5hZzWd.css  [39m[1m[2m   24.02 kB[22m[1m[22m[2m │ gzip:   6.52 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-DOT6lfZT.js   [39m[1m[33m1,704.92 kB[39m[22m[2m │ gzip: 278.38 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-ODDBk9qH.js   [39m[1m[33m1,710.94 kB[39m[22m[2m │ gzip: 280.50 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.64s[39m
+[32m✓ built in 1.59s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: M249 and PKM have extra viewmodel firing motion and gun flash
-ok 32 - M249 and PKM have extra viewmodel firing motion and gun flash
+ok 36 - M249 and PKM have extra viewmodel firing motion and gun flash
   ---
-  duration_ms: 0.151668
+  duration_ms: 0.142315
   type: 'test'
   ...
-1..32
-# tests 32
+1..36
+# tests 36
 # suites 0
-# pass 32
+# pass 36
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4293.17811
+# duration_ms 4395.39684
 ~~~
 ## Regression test output (tail)
 ~~~
@@ -53,7 +53,7 @@ ok 32 - M249 and PKM have extra viewmodel firing motion and gun flash
 # Subtest: eight zombies separate into a moving group while navigating a roof ramp
 not ok 62 - eight zombies separate into a moving group while navigating a roof ramp
   ---
-  duration_ms: 131.313476
+  duration_ms: 133.79435
   type: 'test'
   location: '/home/runner/work/hahadog/hahadog/tests/zombie-navigation.test.mjs:74:1'
   failureType: 'testCodeFailure'
@@ -79,13 +79,13 @@ not ok 62 - eight zombies separate into a moving group while navigating a roof r
 # Subtest: navigation targets can be updated when a player moves to a different floor
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.285918
+  duration_ms: 0.263546
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.528012
+  duration_ms: 0.617384
   type: 'test'
   ...
 1..65
@@ -96,5 +96,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 5911.515966
+# duration_ms 5890.978733
 ~~~
