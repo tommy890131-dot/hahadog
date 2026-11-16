@@ -297,6 +297,13 @@ export function routeWaypoints(from,field){
 export function directPursuitPossible(z,target,maxDistance=10){
   const dx=target.x-z.x,dz=target.z-z.z,range=Math.hypot(dx,dz);
   if(range>maxDistance||Math.abs((z.y??0)-(target.y??0))>.65)return false;
+  // A ramp's lower edge may be <.65m below the destination floor.
+  // Never shortcut between switchback ramp flights, even if a direct
+  // horizontal sweep appears passable for a single frame.
+  if(VERTICAL_LAYOUT.ramps.some(r=>
+    z.x>=r.xMin-.35&&z.x<=r.xMax+.35&&
+    z.z>=r.zMin-.35&&z.z<=r.zMax+.35&&
+    z.y>.1&&z.y<7.2))return false;
   if(range<.001)return true;
   const probe=moveHorizontal(z.x,z.z,z.y,dx,dz,true,RADIUS);
   return Math.hypot(probe.x-target.x,probe.z-target.z)<.4 &&
