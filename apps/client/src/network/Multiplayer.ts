@@ -2,7 +2,7 @@ export type PlayerRecord = {
   id:string; name:string; x:number; y:number; vy:number; z:number; grounded:boolean; yaw:number; pitch:number; ackMoveSeq:number;
   hp:number;maxHp:number;armor:number;level:number;xp:number;nextXp:number;money:number;
   weaponId:string;primary:string|null;secondary:string;owned:string[];inSafehouse:boolean;
-  ammo:number;reserve:number;kills:number;downed:boolean;reloading:boolean;
+  ammo:number;reserve:number;kills:number;downed:boolean;reloading:boolean;classId:'assault'|'medic'|'engineer'|'recon';
 };
 export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; maxHp?:number; kind:'runner'|'walker'|'brute'|'screamer'|'spitter'|'climber'|'juggernaut'|'boss'; step:number; facing:number; moving?:boolean; attacking?:boolean; };
 export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
