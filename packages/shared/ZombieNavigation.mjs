@@ -266,6 +266,18 @@ export function steerZombie(z,desired,neighbors,dt,now){
   return {x:z.vx,z:z.vz,speed:slow*modulation};
 }
 
+/**
+ * All authored H17 and Tyrant GLBs face LOCAL -Z (eyes/nose geometry is
+ * on the negative-Z side). Three.js positive Y rotation sends local -Z
+ * toward world -X, not +X. The prior atan2(dx,-dz) mirrored X, causing
+ * sideways or backwards-looking pursuit depending on travel direction.
+ * Keep authoritative heading independent of the chosen visual LOD/rig.
+ */
+export function headingForModelForwardMinusZ(dx,dz){
+  if(!Number.isFinite(dx)||!Number.isFinite(dz))return 0;
+  return Math.atan2(-dx,-dz);
+}
+
 /** Convert graph edges into collision-valid X-then-Z waypoint corners. */
 export function routeWaypoints(from,field){
   const start=navigation.closest(from.x,from.z,from.y??0);
@@ -371,7 +383,7 @@ export function advanceZombie(z,target,field,neighbors,dt,now,knockX=0,knockZ=0)
   if(z.stuckFor>1.0){z.route=[];z.stuckFor=0;}
   // Facing follows actual displacement rather than lateral avoidance velocity.
   const actualX=z.x-initialX,actualZ=z.z-initialZ;
-  if(Math.hypot(actualX,actualZ)>.004)z.facing=Math.atan2(actualX,-actualZ);
+  if(Math.hypot(actualX,actualZ)>.004)z.facing=headingForModelForwardMinusZ(actualX,actualZ);
   z.moving=Math.hypot(actualX,actualZ)>.008;
   if(z.moving)z.step=(z.step??0)+dt*(z.kind==='runner'?8:5)*organic.speed;
   return true;
