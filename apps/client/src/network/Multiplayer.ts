@@ -4,7 +4,7 @@ export type PlayerRecord = {
   weaponId:string;primary:string|null;secondary:string;owned:string[];inSafehouse:boolean;
   ammo:number;reserve:number;kills:number;downed:boolean;reloading:boolean;
 };
-export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; maxHp?:number; kind:'runner'|'walker'|'brute'|'screamer'|'spitter'|'climber'|'juggernaut'|'boss'; step:number; facing:number; };
+export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; maxHp?:number; kind:'runner'|'walker'|'brute'|'screamer'|'spitter'|'climber'|'juggernaut'|'boss'; step:number; facing:number; moving?:boolean; attacking?:boolean; };
 export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
 export type LootRecord = {id:number;x:number;y:number;z:number;rarity:'common'|'uncommon'|'rare'|'legendary'};
 export type ServerEvent = {
