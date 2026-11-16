@@ -228,7 +228,10 @@ const shop=new ShopUI(sku=>network.send({type:'buy',sku,txn:crypto.randomUUID()}
 function drawLobby(){
   get<HTMLElement>('code').textContent=network.session.code;
   const p=network.session.players;
-  get<HTMLElement>('roster').textContent=p.map((s,i)=>`${i+1}. ${s.name}${s.id===network.session.hostId?' ★ 隊長':''}`).join('　｜　');
+  const labels:Record<PlayerRecord['classId'],string>={assault:'突擊兵',medic:'醫療兵',engineer:'工程兵',recon:'偵察兵'};
+  get<HTMLElement>('roster').textContent=p.map((s,i)=>`${i+1}. ${s.name} [${labels[s.classId]||'突擊兵'}]${s.id===network.session.hostId?' ★ 隊長':''}`).join('　｜　');
+  const own=p.find(entry=>entry.id===network.session.selfId);
+  if(own)get<HTMLSelectElement>('v311-class').value=own.classId;
   const isHost=network.session.hostId===network.session.selfId;
   visible(get<HTMLElement>('start-wave'),isHost);
   if(network.session.phase==='ended')renderCampaignResult();
@@ -627,5 +630,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();visuals.dispose();post.dispose();assets.dispose();
+  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();visuals.dispose();post.dispose();assets.dispose();
 });
