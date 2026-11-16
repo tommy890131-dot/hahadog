@@ -303,7 +303,7 @@ export function directPursuitPossible(z,target,maxDistance=10){
   if(VERTICAL_LAYOUT.ramps.some(r=>
     z.x>=r.xMin-.35&&z.x<=r.xMax+.35&&
     z.z>=r.zMin-.35&&z.z<=r.zMax+.35&&
-    z.y>.1&&z.y<7.2))return false;
+    z.y>.02&&z.y<7.8))return false;
   if(range<.001)return true;
   const probe=moveHorizontal(z.x,z.z,z.y,dx,dz,true,RADIUS);
   return Math.hypot(probe.x-target.x,probe.z-target.z)<.4 &&
