@@ -6,6 +6,7 @@ printf '[V3.11] Node %s, npm %s\n' "$(node --version)" "$(npm --version)"
 npm install --include=dev --workspaces --no-audit --no-fund
 node scripts/copy-draco.mjs
 node scripts/generate-sfx.mjs
+node scripts/restore-enemy-assets.mjs
 npm run build:nav
 node --check server.mjs
 NODE_ENV=test timeout 90s node --test v311/*.test.mjs
