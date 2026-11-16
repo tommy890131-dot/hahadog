@@ -1,7 +1,7 @@
 # V3.11 CI report
-Source commit: c7ba86e21e614ec8df4d36ce9401a8bf40de9fbb
+Source commit: 00336f232c240ff19aacb36b3834b4248352d64f
 Rules: success
-TypeScript/Vite: success
+TypeScript/Vite: failure
 Existing game regression: success
 
 ## Build output (tail)
@@ -14,27 +14,23 @@ Existing game regression: success
 > @deadline/client@3.9.2 build
 > tsc --noEmit && vite build
 
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
-transforming...
-[32m✓[39m 66 modules transformed.
-rendering chunks...
-computing gzip size...
-[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
-[2mdist/[22m[2massets/[22m[35mindex-Da5hZzWd.css  [39m[1m[2m   24.02 kB[22m[1m[22m[2m │ gzip:   6.52 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-ODDBk9qH.js   [39m[1m[33m1,710.94 kB[39m[22m[2m │ gzip: 280.50 kB[22m
-[33m
-(!) Some chunks are larger than 500 kB after minification. Consider:
-- Using dynamic import() to code-split the application
-- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
-- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.92s[39m
+src/world/Teammates.ts(30,20): error TS6133: 'loading' is declared but its value is never read.
+src/world/Teammates.ts(33,20): error TS6133: 'boneColor' is declared but its value is never read.
+src/world/Teammates.ts(89,32): error TS2339: Property 'classId' does not exist on type 'PlayerRecord'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path /home/runner/work/hahadog/hahadog/apps/client
+npm error workspace @deadline/client@3.9.2
+npm error location /home/runner/work/hahadog/hahadog/apps/client
+npm error command failed
+npm error command sh -c tsc --noEmit && vite build
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 39 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.474778
+  duration_ms: 0.38479
   type: 'test'
   ...
 1..39
@@ -45,19 +41,19 @@ ok 39 - both crowd and rig renderers respect identical server facing without 180
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4582.647269
+# duration_ms 4338.575378
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.360779
+  duration_ms: 0.411017
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.69733
+  duration_ms: 0.510374
   type: 'test'
   ...
 1..65
@@ -68,5 +64,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6488.404936
+# duration_ms 5764.545988
 ~~~
