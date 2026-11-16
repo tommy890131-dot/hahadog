@@ -103,6 +103,18 @@ export class ZombieCrowd {
       }
       if(!g.getAttribute('normal'))g.computeVertexNormals();
       if(!g.getAttribute('color'))ZombieCrowd.readVertexColor(mesh,g);
+      else if(g.getAttribute('color').itemSize===4){
+        // The original H17 CrowdStatic GLBs store normalized RGBA8 vertex
+        // colors. Convert to RGB for consistent Three.js PBR rendering.
+        const rgba=g.getAttribute('color');
+        const rgb=new Float32Array(rgba.count*3);
+        for(let i=0;i<rgba.count;i++){
+          rgb[i*3]=rgba.getX(i);
+          rgb[i*3+1]=rgba.getY(i);
+          rgb[i*3+2]=rgba.getZ(i);
+        }
+        g.setAttribute('color',new THREE.BufferAttribute(rgb,3));
+      }
       // Align texture-based GLB meshes and colour-only crowd GLBs in one batch.
       if(g.getAttribute('normal').itemSize!==3||g.getAttribute('color').itemSize!==3){
         g.dispose();continue;
