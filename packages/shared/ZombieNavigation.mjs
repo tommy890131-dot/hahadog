@@ -347,12 +347,24 @@ export function advanceZombie(z,target,field,neighbors,dt,now,knockX=0,knockZ=0)
   const organic=steerZombie(z,{x:vx,z:vz,ramp:onRamp},neighbors,dt,now);
   // Avoid flying past tight landing waypoints, particularly at the switchback.
   const speed=Math.min(z.speed*organic.speed*dt,Math.max(.015,range*.82));
-  const initialX=z.x,initialZ=z.z;
+  const initialX=z.x,initialZ=z.z,initialY=z.y;
+  const initialVy=z.vy,initialGrounded=z.grounded;
   const moved=moveHorizontal(z.x,z.z,z.y,organic.x*speed+knockX*dt,
     organic.z*speed+knockZ*dt,true,RADIUS);
   z.x=moved.x;z.z=moved.z;z.y=moved.feet;
   const falling=stepVertical(z.y,z.vy??0,z.grounded??true,z.x,z.z,dt);
   z.y=falling.y;z.vy=falling.vy;z.grounded=falling.grounded;
+  // Never commit a zombie position that clips a building/floor, including
+  // difficult roof ramp transitions under group separation and shove forces.
+  if(!canOccupyAt(z.x,z.z,z.y,RADIUS,HEIGHT)){
+    z.x=initialX;z.z=initialZ;z.y=initialY;
+    z.vy=initialVy;z.grounded=initialGrounded;
+    z.vx*=.5;z.vz*=.5;
+    // Fresh path on next tick instead of rotating in place.
+    z.route=[];
+    z.moving=false;
+    return false;
+  }
   const progress=Math.hypot(z.x-initialX,z.z-initialZ);
   if(progress<.012&&range>.48)z.stuckFor=(z.stuckFor??0)+dt;
   else z.stuckFor=Math.max(0,(z.stuckFor??0)-dt*2);
