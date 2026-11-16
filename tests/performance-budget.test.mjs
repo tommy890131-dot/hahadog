@@ -59,5 +59,7 @@ test('FPS settings are wired into the active composer and visual-only zombie LOD
   assert.match(adaptive,/composer\.setPixelRatio\(dpr\)/);
   assert.match(adaptive,/this\.bloom\.enabled = quality\.bloom/);
   assert.match(crowd,/this\.frustum\.intersectsSphere/);
-  assert.match(crowd,/this\.distantBody\.setMatrixAt/);
+  assert.match(crowd,/batch\.mesh\.setMatrixAt/);
+  assert.match(crowd,/new THREE\.InstancedMesh/);
+  assert.match(crowd,/distance>detailSq/);
 });
