@@ -8,10 +8,14 @@ test('enemies actively approach a visible same-floor player without a navigation
   const p={id:'player',x:5,z:6,y:0},z=spawn(1,5,12);
   assert.ok(directPursuitPossible(z,p));
   const start=Math.hypot(z.x-p.x,z.z-p.z);
-  for(let i=0;i<50;i++)advanceZombie(z,p,null,[],.05,i*50);
+  let movingFrames=0;
+  for(let i=0;i<50;i++){
+    advanceZombie(z,p,null,[],.05,i*50);
+    if(z.moving)movingFrames++;
+  }
   assert.ok(Math.hypot(z.x-p.x,z.z-p.z)<start-4,'failed to approach the player in 2.5 seconds');
   assert.ok(canOccupyAt(z.x,z.z,z.y,.36),'chase crossed a collider');
-  assert.equal(z.moving,true);
+  assert.ok(movingFrames>=10,'zombie never animated a meaningful approach');
 });
 test('direct pursuit produces progress instead of repeatedly circling the same waypoint',()=>{
   const p={id:'player',x:6,z:6,y:0},z=spawn(22,6,9.4);
