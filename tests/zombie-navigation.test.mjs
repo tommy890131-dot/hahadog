@@ -124,6 +124,6 @@ test('server includes zombie y in authoritative hitboxes, chase and snapshot; cl
   assert.match(server,/z\.y\+\(z\.kind/);
   assert.match(server,/Math\.abs\(z\.y-target\.y\)/);
   assert.match(server,/id:z\.id,x:z\.x,y:z\.y/);
-  assert.match(crowd,/z\.y=THREE\.MathUtils\.lerp/);
+  assert.match(crowd,/zombie\.y=THREE\.MathUtils\.lerp/);
   assert.match(sound,/z\.y\?\?0/);
 });
