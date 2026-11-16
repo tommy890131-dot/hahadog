@@ -16,7 +16,6 @@ type Remote={
   kind:SurvivorClass;
   target:PlayerRecord;
   walking:number;
-  lastX:number;lastZ:number;
 };
 
 /** Original static H17 survivors: one merged draw call per visible teammate,
@@ -27,14 +26,12 @@ export class Teammates {
   private readonly avatars=new Map<string,Remote>();
   private readonly loader=new GLTFLoader();
   private readonly templates=new Map<SurvivorClass,Template>();
-  private readonly loading:Promise<void>;
   private readonly fallbackGeometry=new THREE.CapsuleGeometry(.31,1.15,5,8);
   private readonly fallbackMaterial=new THREE.MeshStandardMaterial({color:0x47718b,roughness:.85});
-  private readonly boneColor=new THREE.Color();
   private disposed=false;
 
   constructor(private readonly scene:THREE.Scene){
-    this.loading=Promise.all(CLASSES.map(kind=>this.load(kind))).then(()=>{});
+    void Promise.all(CLASSES.map(kind=>this.load(kind)));
   }
   private async load(kind:SurvivorClass):Promise<void>{
     try{
@@ -94,7 +91,7 @@ export class Teammates {
         fallback.position.y=1;root.add(fallback);
         root.position.set(p.x,p.y??0,p.z);
         this.scene.add(root);
-        remote={body:root,fallback,model:null,kind,target:p,walking:0,lastX:p.x,lastZ:p.z};
+        remote={body:root,fallback,model:null,kind,target:p,walking:0};
         this.avatars.set(p.id,remote);this.applyModel(remote);
       }else{
         remote.target=p;
