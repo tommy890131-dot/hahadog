@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: f9a9e630e15cd0928833854dad575259ff22931e
+Source commit: add2fe61292eb68dbd50d0db4b32d3b0b5733010
 Rules: success
 TypeScript/Vite: success
 Existing game regression: failure
@@ -27,14 +27,14 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.97s[39m
+[32m✓ built in 1.64s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: M249 and PKM have extra viewmodel firing motion and gun flash
 ok 32 - M249 and PKM have extra viewmodel firing motion and gun flash
   ---
-  duration_ms: 0.22896
+  duration_ms: 0.151668
   type: 'test'
   ...
 1..32
@@ -45,7 +45,7 @@ ok 32 - M249 and PKM have extra viewmodel firing motion and gun flash
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4325.085192
+# duration_ms 4293.17811
 ~~~
 ## Regression test output (tail)
 ~~~
@@ -53,7 +53,7 @@ ok 32 - M249 and PKM have extra viewmodel firing motion and gun flash
 # Subtest: eight zombies separate into a moving group while navigating a roof ramp
 not ok 62 - eight zombies separate into a moving group while navigating a roof ramp
   ---
-  duration_ms: 180.449929
+  duration_ms: 131.313476
   type: 'test'
   location: '/home/runner/work/hahadog/hahadog/tests/zombie-navigation.test.mjs:74:1'
   failureType: 'testCodeFailure'
@@ -79,13 +79,13 @@ not ok 62 - eight zombies separate into a moving group while navigating a roof r
 # Subtest: navigation targets can be updated when a player moves to a different floor
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.331041
+  duration_ms: 0.285918
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.595525
+  duration_ms: 0.528012
   type: 'test'
   ...
 1..65
@@ -96,5 +96,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6273.078963
+# duration_ms 5911.515966
 ~~~
