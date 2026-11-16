@@ -232,8 +232,11 @@ export function steerZombie(z,desired,neighbors,dt,now){
   let gx=desired.x,gz=desired.z;
   const norm=Math.max(.001,Math.hypot(gx,gz));gx/=norm;gz/=norm;
   // Fixed-phase layered sine noise: reproducible wobble, not random teleport.
+  const toTarget=Math.hypot(z.x-(z.targetX??z.x),z.z-(z.targetZ??z.z));
+  // Suppress lateral noise near the player to stop orbiting.
+  const closeTarget=toTarget<7;
   const wobble=(Math.sin(t*(1.25+(id%7)*.13)+id*2.17)*.65+
-    Math.sin(t*.55+id*.71)*.35)*(inRamp?0:.15);
+    Math.sin(t*.55+id*.71)*.35)*(inRamp?0:closeTarget?.018:.10);
   let sx=0,sz=0;
   for(const other of neighbors){if(other===z||Math.abs((other.y??0)-(z.y??0))>.85)continue;
     const dx=z.x-other.x,dz=z.z-other.z,d2=dx*dx+dz*dz;
@@ -244,6 +247,8 @@ export function steerZombie(z,desired,neighbors,dt,now){
   }
   const sLen=Math.hypot(sx,sz);if(sLen>.5){sx=sx/sLen*.5;sz=sz/sLen*.5;}
   if(inRamp){sx*=.12;sz*=.12;} // Don't force zombies off narrow stairs.
+  // Separation should never overpower the approach vector in close-range combat.
+  if(closeTarget){sx*=.24;sz*=.24;}
   let dx=gx-gz*wobble+sx, dz=gz+gx*wobble+sz;
   const len=Math.max(.0001,Math.hypot(dx,dz));dx/=len;dz/=len;
   // Smooth heading. Suppress wandering on ramps/door bottlenecks.
@@ -284,18 +289,37 @@ export function routeWaypoints(from,field){
   return route;
 }
 
+/**
+ * Direct pursuit is allowed only when the full physical sweep reaches the target
+ * on the same floor; this prevents corner-hugging, stale grid waypoints and
+ * looping around a nearby player. Graph routes still handle walls and roofs.
+ */
+export function directPursuitPossible(z,target,maxDistance=10){
+  const dx=target.x-z.x,dz=target.z-z.z,range=Math.hypot(dx,dz);
+  if(range>maxDistance||Math.abs((z.y??0)-(target.y??0))>.65)return false;
+  if(range<.001)return true;
+  const probe=moveHorizontal(z.x,z.z,z.y,dx,dz,true,RADIUS);
+  return Math.hypot(probe.x-target.x,probe.z-target.z)<.4 &&
+    Math.abs(probe.feet-(target.y??0))<.55;
+}
+
 /** Pursues graph waypoints with a persistent route, preventing ramp switching. */
 export function advanceZombie(z,target,field,neighbors,dt,now,knockX=0,knockZ=0){
+  z.targetX=target.x;z.targetZ=target.z;
+  // Same-floor enemies within sight MUST follow the player, not circle the
+  // nearest grid node. Direct mode still uses collision-safe kinematics.
+  const direct=directPursuitPossible(z,target);
+  if(!direct&&!field)return false;
   const movedGoal=Math.hypot(target.x-(z.routeGoalX??target.x),target.z-(z.routeGoalZ??target.z));
-  if(z.routeTarget!==target.id||z.routeGoal!==field.goal||
+  if(!direct&&(z.routeTarget!==target.id||z.routeGoal!==field.goal||
     Math.abs(target.y-(z.routeGoalY??target.y))>1.15||movedGoal>3.5||
-    !Array.isArray(z.route)||z.route.length===0){
+    !Array.isArray(z.route)||z.route.length===0)){
     z.route=routeWaypoints(z,field);z.routeIndex=0;z.routeTarget=target.id;
     z.routeGoal=field.goal;z.routeGoalX=target.x;z.routeGoalZ=target.z;z.routeGoalY=target.y;
   }
-  if(!z.route?.length)return false;
-  let waypoint=z.route[z.routeIndex];
-  for(let i=0;i<4&&waypoint;i++){
+  if(!direct&&!z.route?.length)return false;
+  let waypoint=direct?{x:target.x,z:target.z,y:target.y??0,tag:'direct'}:z.route[z.routeIndex];
+  for(let i=0;!direct&&i<4&&waypoint;i++){
     if(Math.hypot(waypoint.x-z.x,waypoint.z-z.z)>.28||Math.abs(waypoint.y-z.y)>.33)break;
     z.routeIndex++;
     waypoint=z.route[z.routeIndex];
@@ -311,8 +335,8 @@ export function advanceZombie(z,target,field,neighbors,dt,now,knockX=0,knockZ=0)
     if(!waypoint)return true;
   }
   const vx=waypoint.x-z.x,vz=waypoint.z-z.z,range=Math.hypot(vx,vz);
-  const onRamp=waypoint.tag?.startsWith('ramp:')||waypoint.tag==='corner'||
-    VERTICAL_LAYOUT.ramps.some(r=>z.x>=r.xMin-.2&&z.x<=r.xMax+.2&&z.z>=r.zMin-.2&&z.z<=r.zMax+.2&&z.y>.12);
+  const onRamp=!direct&&(waypoint.tag?.startsWith('ramp:')||waypoint.tag==='corner'||
+    VERTICAL_LAYOUT.ramps.some(r=>z.x>=r.xMin-.2&&z.x<=r.xMax+.2&&z.z>=r.zMin-.2&&z.z<=r.zMax+.2&&z.y>.12));
   const organic=steerZombie(z,{x:vx,z:vz,ramp:onRamp},neighbors,dt,now);
   // Avoid flying past tight landing waypoints, particularly at the switchback.
   const speed=Math.min(z.speed*organic.speed*dt,Math.max(.015,range*.82));
@@ -326,7 +350,10 @@ export function advanceZombie(z,target,field,neighbors,dt,now,knockX=0,knockZ=0)
   if(progress<.012&&range>.48)z.stuckFor=(z.stuckFor??0)+dt;
   else z.stuckFor=Math.max(0,(z.stuckFor??0)-dt*2);
   if(z.stuckFor>1.0){z.route=[];z.stuckFor=0;}
-  z.facing=Math.atan2(z.vx,-z.vz);
-  z.step=(z.step??0)+dt*(z.kind==='runner'?8:5)*organic.speed;
+  // Facing follows actual displacement rather than lateral avoidance velocity.
+  const actualX=z.x-initialX,actualZ=z.z-initialZ;
+  if(Math.hypot(actualX,actualZ)>.004)z.facing=Math.atan2(actualX,-actualZ);
+  z.moving=Math.hypot(actualX,actualZ)>.008;
+  if(z.moving)z.step=(z.step??0)+dt*(z.kind==='runner'?8:5)*organic.speed;
   return true;
 }
