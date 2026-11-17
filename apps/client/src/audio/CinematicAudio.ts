@@ -158,7 +158,7 @@ export class CinematicAudio {
     if(now>this.captionEndsAt&&this.caption.style.display!=='none')this.caption.style.display='none';
     if(this.speaking&&now>this.voiceUntil){this.speaking=false;}
     if(!this.initialized||this.listener.context.state!=='running')return;
-    const voiceDuck=this.speaking?.33:1;
+    const voiceDuck=this.speaking ? 0.33 : 1;
     for(const track of this.tracks){
       if(!track.key)continue;
       const wanted=track.key==='music/'+this.mood?this.musicVolume*voiceDuck:0;
