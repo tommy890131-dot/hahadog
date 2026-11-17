@@ -47,7 +47,7 @@ test('live game integrates voice, captions, ducked adaptive music, music/voice s
   assert.match(main,/soundtrack\.say\('boss'/);
   assert.match(main,/soundtrack\.say\('extraction'/);
   assert.match(main,/sound\.playSfx\('reloadMag'/);
-  assert.match(main,/sound\.playSfx\('stepMetal'/);
+  assert.match(main,/\?'stepMetal':'stepConcrete'/);
   assert.match(main,/audio-master/);
   assert.match(main,/audio-music/);
   assert.match(main,/audio-sfx/);
