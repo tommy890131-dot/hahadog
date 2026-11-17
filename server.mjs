@@ -4,6 +4,8 @@ import {createBlackoutProtocol,advanceBlackoutProtocol,triggerBlackout,interactW
   publicEnvironment,inSelectedExtractionZone,ROUTES} from './v312/BlackoutProtocol.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
+import {ROOM_IDLE_MS,SOCKET_PING_INTERVAL_MS,SOCKET_PONG_TIMEOUT_MS,
+  pruneRoomRegistry,handshakeCapacity} from './v312/RoomCapacity.mjs';
 import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
 import {SPECIALS,DEFENSES,RARITIES,chooseSpecial,bossPhase,lootRarity,validPlacement,claimLoot,canTurretShoot,nextEvent} from './v311/GameplaySystems.mjs';
 import fs from 'node:fs';
@@ -474,12 +476,18 @@ function pursue(room,z,target,dt,now,nearby){
 function onMessage(peer,msg){
   if(!msg||typeof msg!=='object'||Array.isArray(msg))return;
   const now=Date.now();
+  if(peer.room&&msg.type!=='ping'&&msg.type!=='pong')peer.room.lastActivityAt=now;
   if(msg.type==='ping'){send(peer,{type:'pong',t:finite(msg.t)?msg.t:now});return;}
   if(msg.type==='create'){
     if(peer.room)return;
-    if(rooms.size>=MAX_ROOMS){send(peer,{type:'error',message:'伺服器房間已滿'});return;}
+    pruneRoomRegistry(rooms,now,expireRoom);
+    if(rooms.size>=MAX_ROOMS){
+      send(peer,{type:'error',message:'目前所有遊戲房間都在使用中，請稍後重試或加入朋友的房間'});
+      return;
+    }
     const code=makeCode();if(!code)return;
     const room={code,players:new Map(),hostId:peer.id,phase:'lobby',wave:0,zombies:[],pending:0,levelIndex:0,lastResult:null,
+      createdAt:now,lastActivityAt:now,
       nextSpawnAt:0,nextWaveAt:0,lastSnapshot:0,damageTimes:[],lastDirectorAt:0,
       navCursor:0,pressure:0,directorPhase:'buildup',relaxUntil:0,navUpdateAt:0,fields:new Map(),revive:new Map()};
     rooms.set(code,room);joinRoom(peer,code,msg.name);return;
@@ -633,6 +641,14 @@ function onMessage(peer,msg){
       room.revive.delete(p.id);announce(room,{type:'revived',by:p.id,target:target.id});}
     return;
   }
+}
+function expireRoom(room){
+  if(!rooms.has(room.code))return;
+  for(const peer of [...room.players.keys()]){
+    send(peer,{type:'error',message:'房間長時間沒有遊戲活動，已自動釋放。請重新建立房間'});
+    peer.close();
+  }
+  if(rooms.get(room.code)===room)rooms.delete(room.code);
 }
 function onClose(peer){
   peers.delete(peer);const room=peer.room;if(!room)return;
@@ -797,11 +813,19 @@ function tick(){
   scheduleNavigation(now);
 }
 setInterval(tick,TICK_MS);
+// Periodically release disconnected browsers and completely inactive rooms.
+const capacitySweep=setInterval(()=>{
+  const now=Date.now();
+  for(const peer of [...peers])peer.ping();
+  pruneRoomRegistry(rooms,now,expireRoom);
+},SOCKET_PING_INTERVAL_MS);
+capacitySweep.unref();
 
 // WebSocket transport remains compatible with the deployed V1 room protocol.
 // Small dependency-free WebSocket RFC 6455 implementation. Browser frames are masked.
 class Peer {
   constructor(socket,address){this.socket=socket;this.address=address;this.id=crypto.randomUUID().slice(0,8);this.buffer=Buffer.alloc(0);this.room=null;this.closed=false;
+    this.lastPongAt=Date.now();this.lastPingAt=0;
     this.messageTokens=120;this.lastTokenAt=Date.now();
     this.byteTokens=MAX_INBOUND_BURST;this.lastByteAt=Date.now();
     socket.on('data', chunk=>this.receive(chunk));socket.on('error',()=>this.close());socket.on('close',()=>this.close());
@@ -838,7 +862,7 @@ class Peer {
       for(let i=0;i<payload.length;i++)payload[i]^=mask[i%4];
       if(opcode===8){this.close();return;}
       if(opcode===9){this.frame(10,payload);continue;}
-      if(opcode===10)continue;
+      if(opcode===10){this.lastPongAt=Date.now();continue;}
       if(opcode!==1){this.close();return;}
       const now=Date.now();
       this.messageTokens=Math.min(120,this.messageTokens+Math.max(0,now-this.lastTokenAt)*MAX_MESSAGES_PER_SECOND/1000);
@@ -846,6 +870,15 @@ class Peer {
       if(this.messageTokens<1){this.close();return;}
       this.messageTokens-=1;
       try{onMessage(this,JSON.parse(payload.toString('utf8')));}catch{}
+    }
+  }
+  ping(){
+    if(this.closed)return;
+    const now=Date.now();
+    if(now-this.lastPongAt>SOCKET_PONG_TIMEOUT_MS){this.close();return;}
+    if(now-this.lastPingAt>=SOCKET_PING_INTERVAL_MS){
+      this.lastPingAt=now;
+      this.frame(9,Buffer.from('df-alive'));
     }
   }
   close(){if(this.closed)return;this.closed=true;onClose(this);
@@ -865,7 +898,10 @@ const server=http.createServer((req,res)=>{
   catch{res.writeHead(400);res.end();return;}
   if(url.pathname==='/health'){
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,rooms:rooms.size,players:peers.size,maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS}));return;
+    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.12':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,
+      rooms:rooms.size,connections:peers.size,activePlayers:[...rooms.values()].reduce((n,room)=>n+room.players.size,0),
+      maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS,
+      websocketHeartbeatMs:SOCKET_PING_INTERVAL_MS,roomIdleLobbyMs:ROOM_IDLE_MS.lobby}));return;
   }
   if(req.method!=='GET'&&req.method!=='HEAD'){
     res.writeHead(405);res.end();return;
@@ -886,9 +922,14 @@ const server=http.createServer((req,res)=>{
 server.on('upgrade',(req,socket)=>{
   const key=req.headers['sec-websocket-key'];
   const address=connectionAddress(req);
-  if(!acceptOrigin(req) || peers.size>=MAX_TOTAL_CONNECTIONS ||
-      (connectionCounts.get(address)||0)>=MAX_IP_CONNECTIONS ||
-      !allowHandshake(address,Date.now())){
+  const capacity=handshakeCapacity(peers.size,connectionCounts.get(address)||0,
+    address,MAX_TOTAL_CONNECTIONS,MAX_IP_CONNECTIONS);
+  if(capacity){
+    console.warn('[Capacity] WebSocket capacity reached:',capacity,'active=',peers.size);
+    socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\n\r\n');
+    return;
+  }
+  if(!acceptOrigin(req)||!allowHandshake(address,Date.now())){
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;
   }
   if(req.url!=='/ws' || req.headers.upgrade?.toLowerCase()!=='websocket' || typeof key!=='string' || !/^[A-Za-z0-9+/]{22}==$/.test(key)){
