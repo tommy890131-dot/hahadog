@@ -5,6 +5,12 @@ export type PlayerRecord = {
   ammo:number;reserve:number;kills:number;downed:boolean;reloading:boolean;classId:'assault'|'medic'|'engineer'|'recon';
 };
 export type ZombieRecord = { id:number; x:number; y:number; z:number; hp:number; maxHp?:number; kind:'runner'|'walker'|'brute'|'screamer'|'spitter'|'climber'|'juggernaut'|'boss'; step:number; facing:number; moving?:boolean; attacking?:boolean; };
+export type WorldDevice={id:string;label:string;x:number;y:number;z:number;range:number;active:boolean};
+export type EvacRoute={id:string;label:string;x:number;y:number;z:number;radius:number;requires:string;ready:boolean};
+export type EnvironmentState={
+  powerOnline:boolean;blackoutRemainingMs:number;relayReady:boolean;selectedRoute:string|null;
+  routes:EvacRoute[];devices:WorldDevice[];
+};
 export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
 export type LootRecord = {id:number;x:number;y:number;z:number;rarity:'common'|'uncommon'|'rare'|'legendary'};
 export type ServerEvent = {
@@ -18,6 +24,7 @@ export type ServerEvent = {
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
   ok?:boolean;sku?:string;reason?:string;action?:string;weaponId?:string;
   mission?:string;levelId?:string;missionPhase?:string;goal?:number;progress?:number;success?:boolean;classId?:string;
+  environment?:EnvironmentState;
   defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;kind?:string;defenseId?:number;levelLabel?:string;objective?:string;hasNextLevel?:boolean;result?:'won'|'lost'|null;levelIndex?:number;
 };
 export class Multiplayer {
