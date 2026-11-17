@@ -1,7 +1,7 @@
 # V3.11 CI report
-Source commit: 3070648cf20b48fb1c8cbb35190724ab194a0169
+Source commit: 4bffebfcf1625438de0f88269dbe633ec085a1bd
 Rules: success
-TypeScript/Vite: success
+TypeScript/Vite: failure
 Existing game regression: success
 
 ## Build output (tail)
@@ -14,27 +14,21 @@ Existing game regression: success
 > @deadline/client@3.9.2 build
 > tsc --noEmit && vite build
 
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
-transforming...
-[32m✓[39m 66 modules transformed.
-rendering chunks...
-computing gzip size...
-[2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
-[2mdist/[22m[2massets/[22m[35mindex-Da5hZzWd.css  [39m[1m[2m   24.02 kB[22m[1m[22m[2m │ gzip:   6.52 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-RQk-mq1m.js   [39m[1m[33m1,713.48 kB[39m[22m[2m │ gzip: 281.15 kB[22m
-[33m
-(!) Some chunks are larger than 500 kB after minification. Consider:
-- Using dynamic import() to code-split the application
-- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
-- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.84s[39m
+src/game/WeaponViewmodel.ts(87,20): error TS6133: 'muzzleWorld' is declared but its value is never read.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path /home/runner/work/hahadog/hahadog/apps/client
+npm error workspace @deadline/client@3.9.2
+npm error location /home/runner/work/hahadog/hahadog/apps/client
+npm error command failed
+npm error command sh -c tsc --noEmit && vite build
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 44 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.45356
+  duration_ms: 0.440604
   type: 'test'
   ...
 1..44
@@ -45,19 +39,19 @@ ok 44 - both crowd and rig renderers respect identical server facing without 180
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4498.440471
+# duration_ms 4571.519026
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.386966
+  duration_ms: 0.318284
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.668699
+  duration_ms: 0.54151
   type: 'test'
   ...
 1..65
@@ -68,5 +62,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6325.478657
+# duration_ms 6020.861415
 ~~~
