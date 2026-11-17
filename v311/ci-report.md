@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: 6016145a980a7fa66c07382c99d9138a231098a7
+Source commit: adacc4af30e5db3d3b23f6fc541a13389ae65ba2
 Rules: success
 TypeScript/Vite: success
 Existing game regression: success
@@ -34,7 +34,7 @@ computing gzip size...
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 61 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.534564
+  duration_ms: 0.476096
   type: 'test'
   ...
 1..61
@@ -45,19 +45,19 @@ ok 61 - both crowd and rig renderers respect identical server facing without 180
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4667.394323
+# duration_ms 4690.081131
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.352571
+  duration_ms: 0.342276
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.638627
+  duration_ms: 0.628899
   type: 'test'
   ...
 1..65
@@ -68,5 +68,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6345.442548
+# duration_ms 6495.70628
 ~~~
