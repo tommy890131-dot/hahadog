@@ -12,6 +12,7 @@ export type ServerEvent = {
   phase?:string; players?:PlayerRecord[]; zombies?:ZombieRecord[];
   remaining?:number; wave?:number; remainingMs?:number; shopRemainingMs?:number; nextWave?:number; by?:string; target?:string;
   from?:{x:number;y:number;z:number}; to?:{x:number;y:number;z:number};
+  visualFrom?:{x:number;y:number;z:number}; visualTo?:{x:number;y:number;z:number}; shotId?:number;
   enemyId?:number; hit?:boolean; killed?:boolean; message?:string;
   pressure?:number; directorPhase?:string; amount?:number;armorDamage?:number;
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
