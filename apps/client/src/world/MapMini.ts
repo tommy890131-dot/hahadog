@@ -1,6 +1,6 @@
 import mapData from '../../../../packages/shared/MapLayout.json';
 import { TACTICAL_IDS } from '../../../../packages/shared/VerticalCollision.mjs';
-import type {ZombieRecord} from '../network/Multiplayer';
+import type {ZombieRecord,EnvironmentState} from '../network/Multiplayer';
 export class MapMini {
   private ctx:CanvasRenderingContext2D;
   private size=194;
@@ -10,7 +10,7 @@ export class MapMini {
     const ctx=this.canvas.getContext('2d');if(!ctx)throw Error('Minimap canvas unavailable');
     this.ctx=ctx;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
-  draw(x:number,z:number,yaw:number,zombies:ZombieRecord[]):void{
+  draw(x:number,z:number,yaw:number,zombies:ZombieRecord[],environment?:EnvironmentState|null):void{
     const ctx=this.ctx,s=this.size,h=mapData.halfSize,scale=s/(2*h),pt=(v:number)=>(v+h)*scale;
     ctx.clearRect(0,0,s,s);ctx.fillStyle='#0e1f28ef';ctx.fillRect(0,0,s,s);
     ctx.fillStyle='#384450';
@@ -26,6 +26,32 @@ export class MapMini {
     }
     ctx.strokeStyle='#3fbbac';ctx.lineWidth=1.2;
     ctx.beginPath();ctx.arc(pt(0),pt(0),mapData.safehouse.radius*scale,0,Math.PI*2);ctx.stroke();
+    // Fixed-location powered consoles and randomized server-authorized exits.
+    if(environment){
+      ctx.lineWidth=1.7;
+      for(const route of environment.routes){
+        const chosen=environment.selectedRoute===route.id;
+        ctx.strokeStyle=chosen?'#ffd273':route.ready?'#68e5c2':'#ab6c64';
+        ctx.fillStyle=chosen?'#ffe5a5':route.ready?'#b2fff0':'#ab8b7a';
+        ctx.beginPath();ctx.arc(pt(route.x),pt(route.z),chosen?5:3.8,0,Math.PI*2);ctx.stroke();
+        ctx.font='bold 9px sans-serif';
+        ctx.fillText(route.id==='van'?'車':route.id==='convoy'?'醫':'洞',pt(route.x)+5,pt(route.z)-5);
+      }
+      for(const device of environment.devices){
+        if(!device.active)continue;
+        const x=pt(device.x),y=pt(device.z);
+        ctx.fillStyle='#ffcd76';
+        ctx.fillRect(x-2.5,y-2.5,5,5);
+        ctx.font='bold 9px sans-serif';
+        ctx.fillText(device.id==='generator'?'電':device.id==='relay'?'訊':'警',x+5,y-4);
+      }
+      const selected=environment.routes.find(route=>route.id===environment.selectedRoute);
+      if(selected){
+        ctx.save();ctx.setLineDash([3,5]);ctx.strokeStyle='#f5cf82';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(pt(x),pt(z));ctx.lineTo(pt(selected.x),pt(selected.z));ctx.stroke();
+        ctx.restore();
+      }
+    }
     ctx.fillStyle='#bc6457';for(const p of zombies){
       ctx.fillRect(pt(p.x)-1.1,pt(p.z)-1.1,2.2,2.2);
     }
