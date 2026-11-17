@@ -35,7 +35,8 @@ test('turrets animate visible yaw, recoil and muzzle flash from server events',(
   assert.match(main,/battleExtras\.animate\(dt\)/);
 });
 test('all player and machine-gun bullets use a pooled moving tracer system',()=>{
-  assert.match(main,/tracers\.spawn\(event\.from,event\.to,'gun'\)/);
+  assert.match(main,/fireVisualTracer\(event\)/);
+  assert.match(main,/tracers\.spawn\(from,to,'gun'\)/);
   assert.match(main,/tracers\.spawn\(event\.from,event\.to,'turret'\)/);
   assert.match(tracers,/private readonly max=36/);
   assert.match(tracers,/new THREE\.InstancedMesh/);
