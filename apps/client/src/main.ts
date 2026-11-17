@@ -200,12 +200,24 @@ audioSettings.innerHTML='<h3 style="margin:0 0 9px">遊戲聲音設定</h3>'+
   '<label>無線電配音 <input id="audio-radio" type="range" min="0" max="100" value="85"></label>'+
   '<label style="display:block;margin-top:8px"><input id="audio-radio-enabled" type="checkbox" checked> 啟用繁中無線電語音（沒有系統語音時仍顯示字幕）</label>';
 get<HTMLElement>('settings-panel').append(audioSettings);
+audioSettings.querySelectorAll<HTMLLabelElement>('label').forEach(label=>{
+  label.style.display='flex';label.style.justifyContent='space-between';
+  label.style.alignItems='center';label.style.gap='12px';label.style.margin='8px 0';
+});
+audioSettings.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(input=>{
+  input.style.width='48%';
+});
+let masterLevel=.8,radioLevel=.85;
 for(const [key,defaultValue,apply] of [
-  ['master',80,(v:number)=>sound.setMasterVolume(v)],
+  ['master',80,(v:number)=>{
+    masterLevel=v;sound.setMasterVolume(v);soundtrack.setRadioVolume(radioLevel*masterLevel);
+  }],
   ['music',36,(v:number)=>soundtrack.setMusicVolume(v)],
   ['sfx',80,(v:number)=>sound.setEffectsVolume(v)],
   ['ambient',42,(v:number)=>soundtrack.setAmbienceVolume(v)],
-  ['radio',85,(v:number)=>soundtrack.setRadioVolume(v)]
+  ['radio',85,(v:number)=>{
+    radioLevel=v;soundtrack.setRadioVolume(radioLevel*masterLevel);
+  }]
 ] as const){
   const slider=get<HTMLInputElement>('audio-'+key);
   let saved:number=defaultValue;
