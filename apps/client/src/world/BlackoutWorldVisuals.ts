@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type {EnvironmentState, WorldDevice, EvacRoute} from '../network/Multiplayer';
+import type {EnvironmentState, EvacRoute} from '../network/Multiplayer';
 
 type Marker={group:THREE.Group;light:THREE.Mesh;ring:THREE.Mesh;label:string};
 type Nearby={id:string;label:string;distance:number;ready:boolean};
