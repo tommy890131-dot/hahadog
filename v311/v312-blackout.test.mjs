@@ -46,7 +46,7 @@ test('reject spoofed, distant, dead, premature and malformed interactions',()=>{
   assert.equal(interact(env,{...p,x:Number.POSITIVE_INFINITY},'generator').ok,false);
   assert.equal(interact(env,player(0,-24),'generator').ok,false,'power is already online');
   assert.equal(interact(env,player(0,70),'tunnel').ok,false,'objectives incomplete');
-  assert.equal(interact(env,player(0,24),'relay',10000).ok,true);
+  assert.equal(interact(env,player(0,24),'relay',12000).ok,true);
   assert.equal(interactWithWorld(env,{player:player(0,24),id:'relay',now:11000,phase:'intermission'}).ok,false);
   assert.equal(interactWithWorld(env,{player:player(0,24),id:'relay',now:11000,downed:true}).ok,false);
   assert.equal(interact(env,player(99,99),'alarm',12000).ok,false,'distance validation');
