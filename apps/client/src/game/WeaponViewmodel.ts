@@ -84,7 +84,6 @@ export class WeaponViewmodel {
   private machineGunPulse=0;
   private disposed = false;
   private scoped = false;
-  private readonly muzzleWorld = new THREE.Vector3();
 
   constructor(
     private readonly camera: THREE.Camera,
