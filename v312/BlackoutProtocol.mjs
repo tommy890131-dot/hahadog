@@ -56,7 +56,7 @@ export function routeReady(p,id){
 export function interactWithWorld(p,{player,id,now,phase='playing',downed=false}){
   if(phase!=='playing'||downed||!player||!finite(now))return result(false,'目前無法操作');
   if(typeof id!=='string'||id.length>32)return result(false,'找不到互動機關');
-  const entry=DEVICES[id]??ROUTES[id];
+  const entry=Object.hasOwn(DEVICES,id)?DEVICES[id]:Object.hasOwn(ROUTES,id)?ROUTES[id]:null;
   if(!entry||!finite(player.x)||!finite(player.z)||!finite(player.y))return result(false,'找不到互動機關');
   const max=entry.range??entry.radius;
   if(distance(entry,player)>max||Math.abs(entry.y-player.y)>1.7)
