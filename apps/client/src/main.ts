@@ -29,8 +29,8 @@ import './style.css';
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <div id="overlay"><div class="panel">
-  <div class="eyebrow">DEADLINE FOUR · V3.11 · SURVIVAL</div>
-  <h1>末日防線 <span>V3.11</span></h1>
+  <div class="eyebrow">DEADLINE FOUR · V3.12 · BLACKOUT PROTOCOL</div>
+  <h1>末日防線 <span>V3.12</span></h1>
   <p class="desc">FOUR SURVIVORS · ONE LAST NIGHT</p>
   <div class="loading-track"><div id="loading-bar"></div></div>
   <div id="loading-text">初始化夜間城市…</div><p id="connection" class="status">伺服器連線中</p>
@@ -41,7 +41,7 @@ app.innerHTML=`
     <h2 id="code">-----</h2><div id="roster"></div>
     <button id="start-wave">隊長開始戰鬥</button><p class="hint">四位隊友使用同一網址，輸入房號即可合作。</p></section>
   <section id="battle-entry" class="hidden"><h2>城市已遭感染</h2>
-    <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">每波結束有 30 秒的全隊安全採購期。</p></section>
+    <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">隨機停電 · 城市互動機關 · 每局兩條撤離路線。</p></section>
   <section id="game-over" class="hidden" aria-label="關卡結算">
     <h2 id="result-title">任務結算</h2>
     <p id="last-wave"></p>
@@ -64,7 +64,7 @@ app.innerHTML=`
         <dt>移動及視角</dt><dd>W A S D 移動、滑鼠轉向、Space 跳躍、Shift 衝刺</dd>
         <dt>戰鬥及裝備</dt><dd>左鍵開火、右鍵瞄準、狙擊槍開鏡時滾輪切換 4×／8×、R 換彈、1／2 換武器、V 推擊</dd>
         <dt>合作與職業</dt><dd>Q 職業技能、E 救援隊友、Tab 查看小隊完整戰績</dd>
-        <dt>防禦與搜刮</dt><dd>G 部署機槍塔、H 部署路障、T 修理設施、F 搜刮物資、B 開啟商店</dd>
+        <dt>防禦與搜刮</dt><dd>G 部署機槍塔、H 部署路障、T 修理設施、F 操作機關／搜刮、B 開啟商店</dd>
         <dt>畫質及暫停</dt><dd>F8 畫質模式、Esc 解除滑鼠鎖定並顯示選單</dd>
       </dl>
     </details>
@@ -72,7 +72,7 @@ app.innerHTML=`
   <p id="notice" class="status"></p>
   <div id="asset-label" class="status"></div>
 </div></div>
-<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.11 · SURVIVAL / COOP</small></div>
+<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.12 · BLACKOUT / COOP</small></div>
   <div id="mission">WAVE 01</div><div id="squad"></div><div id="feedback">小隊整備中</div><div id="performance"></div></div>
 <div id="player-hud" class="hidden"><div class="currency"><span id="money">$600</span><span id="level">LV 1</span></div>
   <div class="stat-label">護甲 <span id="armor-value">0 / 100</span></div><div class="stat-track armor-track"><div id="armor-fill"></div></div>
