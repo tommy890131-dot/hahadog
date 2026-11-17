@@ -208,7 +208,7 @@ for(const [key,defaultValue,apply] of [
   ['radio',85,(v:number)=>soundtrack.setRadioVolume(v)]
 ] as const){
   const slider=get<HTMLInputElement>('audio-'+key);
-  let saved=defaultValue;
+  let saved:number=defaultValue;
   try{saved=Number(localStorage.getItem('df-audio-'+key)??defaultValue);}catch{}
   slider.value=String(Math.max(0,Math.min(100,Number.isFinite(saved)?saved:defaultValue)));
   const update=()=>{
