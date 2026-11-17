@@ -10,6 +10,7 @@ import type { QualityMode } from './core/FrameBudget';
 import { ImpactSystem } from './effects/ImpactSystem';
 import { ShotImpactBridge } from './effects/ShotImpactBridge';
 import { SoundManager } from './audio/SoundManager';
+import { CinematicAudio,type MusicMood } from './audio/CinematicAudio';
 import { CombatFeedbackUI } from './ui/CombatFeedbackUI';
 import { WeaponViewmodel } from './game/WeaponViewmodel';
 import {WEAPONS,isWeaponId,toTuning,type WeaponId} from './game/WeaponCatalog';
@@ -182,7 +183,63 @@ void surfaceMaterialsReady().then(missing=>{
   else console.info('[Visuals] All requested PBR maps ready');
 });
 const sound=new SoundManager(camera,scene);
-void sound.preload();
+const soundtrack=new CinematicAudio(sound.listener);
+void Promise.all([sound.preload(),soundtrack.preload()]);
+function activateAudio():void{
+  void sound.unlock().then(ready=>{if(ready)soundtrack.unlock();});
+}
+// Persist per-category mixing independently from the game's mouse sensitivity.
+const audioSettings=document.createElement('div');
+audioSettings.className='audio-settings';
+audioSettings.style.cssText='margin:12px 0;padding:12px;border:1px solid #4b6c72;border-radius:6px;color:#d9f2f4;text-align:left';
+audioSettings.innerHTML='<h3 style="margin:0 0 9px">遊戲聲音設定</h3>'+
+  '<label>主音量 <input id="audio-master" type="range" min="0" max="100" value="80"></label>'+
+  '<label>背景音樂 <input id="audio-music" type="range" min="0" max="100" value="36"></label>'+
+  '<label>武器與音效 <input id="audio-sfx" type="range" min="0" max="100" value="80"></label>'+
+  '<label>環境氣氛 <input id="audio-ambient" type="range" min="0" max="100" value="42"></label>'+
+  '<label>無線電配音 <input id="audio-radio" type="range" min="0" max="100" value="85"></label>'+
+  '<label style="display:block;margin-top:8px"><input id="audio-radio-enabled" type="checkbox" checked> 啟用繁中無線電語音（沒有系統語音時仍顯示字幕）</label>';
+get<HTMLElement>('settings-panel').append(audioSettings);
+for(const [key,defaultValue,apply] of [
+  ['master',80,(v:number)=>sound.setMasterVolume(v)],
+  ['music',36,(v:number)=>soundtrack.setMusicVolume(v)],
+  ['sfx',80,(v:number)=>sound.setEffectsVolume(v)],
+  ['ambient',42,(v:number)=>soundtrack.setAmbienceVolume(v)],
+  ['radio',85,(v:number)=>soundtrack.setRadioVolume(v)]
+] as const){
+  const slider=get<HTMLInputElement>('audio-'+key);
+  let saved=defaultValue;
+  try{saved=Number(localStorage.getItem('df-audio-'+key)??defaultValue);}catch{}
+  slider.value=String(Math.max(0,Math.min(100,Number.isFinite(saved)?saved:defaultValue)));
+  const update=()=>{
+    const n=Number(slider.value);
+    apply(n/100);
+    try{localStorage.setItem('df-audio-'+key,slider.value);}catch{}
+  };
+  slider.addEventListener('input',update);update();
+}
+const radioToggle=get<HTMLInputElement>('audio-radio-enabled');
+try{radioToggle.checked=localStorage.getItem('df-audio-radio-enabled')!=='false';}catch{}
+soundtrack.setVoiceEnabled(radioToggle.checked);
+radioToggle.addEventListener('change',()=>{
+  soundtrack.setVoiceEnabled(radioToggle.checked);
+  try{localStorage.setItem('df-audio-radio-enabled',String(radioToggle.checked));}catch{}
+});
+let endingMood:MusicMood|null=null;
+let lastMusicRefresh=0;
+function updateMusic():void{
+  const phase=network.session.phase;
+  let mood:MusicMood='menu';
+  if(endingMood)mood=endingMood;
+  else if(phase==='playing'){
+    if(currentEnvironment&&!currentEnvironment.powerOnline)mood='blackout';
+    else if(network.session.zombies.some(z=>z.kind==='boss'))mood='boss';
+    else if(objectivePhase==='extraction')mood='extraction';
+    else mood=network.session.zombies.length>=5?'combat':'explore';
+  }else if(phase==='intermission')mood='explore';
+  soundtrack.setMood(mood);
+}
+
 const combatUI=new CombatFeedbackUI(renderer.domElement);
 const scoreboard=get<HTMLElement>('scoreboard');
 const indoorRay=new THREE.Raycaster();
@@ -396,7 +453,10 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
   if(event.type==='campaignStart'){
     objectivePhase='objectives';
+    endingMood=null;
     updateEnvironment(event.environment??null);
+    soundtrack.say('missionStart',true);
+    sound.playSfx('objective',.60);
     missionOverlay.style.display='none';
     battleExtras.update([],[]);
     get<HTMLElement>('feedback').textContent='';
@@ -416,6 +476,9 @@ network.onEvent=(event:ServerEvent)=>{
       ?(event.levelLabel||network.session.levelLabel)+'：可選擇撤離點，靠近按 F 啟動並集合'
       :(event.levelLabel||network.session.levelLabel)+'｜擊殺感染者 '+(event.progress||0)+'/'+(event.goal||12);
     if(event.message)alertMessage(event.message);
+    if(event.missionPhase==='extraction'){
+      sound.playSfx('extraction',.85);soundtrack.say('extraction',true);
+    }
     return;
   }
   if(event.type==='missionProgress'){
@@ -428,31 +491,69 @@ network.onEvent=(event:ServerEvent)=>{
     shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);
     controller.controls.unlock();menuMode('over');
     get<HTMLElement>('last-wave').textContent=event.message||'任務結算';
-    missionOverlay.style.display='none';updateEnvironment(null);renderCampaignResult();return;
+    missionOverlay.style.display='none';updateEnvironment(null);renderCampaignResult();
+    endingMood=event.success?'victory':'defeat';
+    sound.playSfx(event.success?'success':'failure',.85);
+    soundtrack.say(event.success?'success':'failure',true);
+    updateMusic();return;
   }
   if(event.type==='environmentState'){
     if(event.environment)updateEnvironment(event.environment);
     if(event.message)alertMessage(event.message);
-    return;
+    if(event.action==='blackout'){sound.playSfx('blackout',.85);soundtrack.say('blackout',true);}
+    if(event.action==='power_restored'){sound.playSfx('powerRestore',.65);soundtrack.say('powerRestored');}
+    if(event.action==='relay_online'){sound.playSfx('relay',.65);soundtrack.say('relay');}
+    if(event.action==='alarm'){sound.playSfx('alarm',.8);soundtrack.say('alarm',true);}
+    if(event.action==='route_selected'){
+      sound.playSfx('extraction',.7);
+      const route=event.environment?.selectedRoute;
+      if(route==='van'||route==='convoy'||route==='tunnel'){
+        sound.playSfx(route,.7);soundtrack.say(route,true);
+      }
+    }
+    updateMusic();return;
   }
   if(event.type==='environmentAction'){
     if(event.message)alertMessage(event.message);
     return;
   }
-  if(event.type==='skillUsed'){if(event.by===network.session.selfId)alertMessage('職業技能已啟動');return;}
+  if(event.type==='skillUsed'){
+    if(event.by===network.session.selfId){
+      alertMessage('職業技能已啟動');sound.playSfx('skill',.6);
+      const role=self()?.classId;
+      if(role==='medic')sound.playSfx('heal',.58);
+      if(role==='engineer')sound.playSfx('armor',.58);
+    }
+    return;
+  }
   if(event.type==='bossAppeared'||event.type==='randomEvent'||event.type==='actionResult'){
-    alertMessage(event.message||'戰場狀態更新');return;
+    alertMessage(event.message||'戰場狀態更新');
+    if(event.type==='bossAppeared'){
+      sound.playSfx('bossIntro',.9);sound.playSfx('boss',.83);soundtrack.say('boss',true);
+      soundtrack.setMood('boss');
+    }
+    if(event.type==='randomEvent'){
+      if(event.event==='horde'){sound.playSfx('horde',.7);soundtrack.say('wave');}
+      if(event.event==='supply_drop'){sound.playSfx('loot',.6);soundtrack.say('supply');}
+    }
+    return;
   }
   if(event.type==='lootCollected'&&event.by===network.session.selfId){
-    alertMessage(`搜刮成功：${event.rarity??'common'} +${event.credits??0}`);return;
+    alertMessage(`搜刮成功：${event.rarity??'common'} +${event.credits??0}`);
+    sound.playSfx('loot',.58);return;
   }
-  if(event.type==='defenseBuilt'&&event.by===network.session.selfId){alertMessage('防禦設施已部署');return;}
-  if(event.type==='specialAttack'&&event.kind==='screamer'){alertMessage('尖叫者召集屍潮！');return;}
+  if(event.type==='defenseBuilt'&&event.by===network.session.selfId){
+    alertMessage('防禦設施已部署');sound.playSfx('generator',.24);return;
+  }
+  if(event.type==='specialAttack'&&event.kind==='screamer'){
+    alertMessage('尖叫者召集屍潮！');sound.playSfx('horde',.48);return;
+  }
   if(event.type==='joined'){menuMode('lobby');drawLobby();shop.setContext('lobby',0);shop.update(self());return;}
   if(event.type==='room'){drawLobby();shop.update(self());return;}
   if(event.type==='disconnected'){
     combatUI.setActive(false);sound.setCriticalHeartbeat(false);
-    downed=false;shop.close(true);updateEnvironment(null);visible(get<HTMLElement>('intermission-banner'),false);controller.controls.unlock();menuMode('menu');alertMessage('與伺服器斷線，正在重新連線');return;
+    downed=false;shop.close(true);updateEnvironment(null);visible(get<HTMLElement>('intermission-banner'),false);controller.controls.unlock();menuMode('menu');alertMessage('與伺服器斷線，正在重新連線');
+    soundtrack.setMood('menu');return;
   }
   if(event.type==='wave'){
     shopRemainingUntil=0;lastShopDisplay=-1;
@@ -460,6 +561,7 @@ network.onEvent=(event:ServerEvent)=>{
     if(shop.isOpen)shop.close(true);
     shop.setContext('playing',0);
     if(!controller.controls.isLocked)enterBattle();
+    sound.playSfx('horde',.65);soundtrack.say('wave');
     alertMessage(event.message||'屍潮來襲');return;
   }
   if(event.type==='intermission'){
@@ -469,6 +571,8 @@ network.onEvent=(event:ServerEvent)=>{
     visible(overlay,false);visible(get<HTMLElement>('intermission-banner'),true);
     for(const el of [hud,weaponHud,playerHud,mapWrap])visible(el,true);
     shop.open(self());renderHUD();
+    sound.playSfx('objective',.55);soundtrack.say('waveClear');
+    soundtrack.setMood('explore');
     alertMessage(event.message||'屍潮清除！30 秒安全購物時間');return;
   }
   if(event.type==='waveClear')return;
@@ -511,11 +615,15 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='shopResult'){
     const itemName=event.sku==='armor'?'防彈背心':event.sku==='medkit'?'急救補給':event.sku==='ammo'?'彈藥補充':WEAPONS[event.sku as WeaponId]?.name||'商品';
     alertMessage(event.ok?`${event.action==='equip'?'已裝備':'購買成功'}：${itemName}`:`商店：${event.reason||'購買失敗'}`);
+    sound.playSfx(event.ok?'purchase':'empty',event.ok?.45:.25);
     return;
   }
   if(event.type==='turretShot'&&typeof event.defenseId==='number'&&event.from&&event.to){
     battleExtras.onTurretShot(event.defenseId,event.from,event.to);
-    tracers.spawn(event.from,event.to,'turret');return;
+    tracers.spawn(event.from,event.to,'turret');
+    if(camera.position.distanceToSquared(new THREE.Vector3(event.from.x,event.from.y,event.from.z))<48*48)
+      sound.playSfx('lmg',.25);
+    return;
   }
   if(event.type==='shot'){
     shotFx.onServerShot(event);
@@ -531,9 +639,18 @@ network.onEvent=(event:ServerEvent)=>{
     }
     return;
   }
-  if(event.type==='damage'&&event.target===network.session.selfId)alertMessage('受到殭屍攻擊！護甲會優先吸收傷害');
-  if(event.type==='downed'&&event.target===network.session.selfId){downed=true;alertMessage('你已倒地！等待隊友救援');}
-  if(event.type==='revived'&&event.target===network.session.selfId){downed=false;alertMessage('隊友已將你救起');}
+  if(event.type==='damage'&&event.target===network.session.selfId){
+    alertMessage('受到殭屍攻擊！護甲會優先吸收傷害');
+    sound.playSfx('damage',.53);
+  }
+  if(event.type==='downed'&&event.target===network.session.selfId){
+    downed=true;alertMessage('你已倒地！等待隊友救援');
+    sound.playSfx('downed',.72);soundtrack.say('downed',true);
+  }
+  if(event.type==='revived'&&event.target===network.session.selfId){
+    downed=false;alertMessage('隊友已將你救起');
+    sound.playSfx('revive',.55);soundtrack.say('revived');
+  }
   if(event.type==='gameOver'){
     primaryHeld=false;
     combatUI.setActive(false);sound.setCriticalHeartbeat(false);
@@ -541,10 +658,11 @@ network.onEvent=(event:ServerEvent)=>{
     controller.controls.unlock();menuMode('over');
     get<HTMLElement>('last-wave').textContent='小隊於第 '+(event.wave||1)+' 波遭到殲滅 · 擊殺 '+localKills;
     missionOverlay.style.display='none';drawLobby();renderCampaignResult();
+    endingMood='defeat';sound.playSfx('failure',.74);soundtrack.say('failure',true);
   }
 };
-get<HTMLButtonElement>('create').onclick=()=>{void sound.unlock();network.create(get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
-get<HTMLButtonElement>('join').onclick=()=>{void sound.unlock();network.join(get<HTMLInputElement>('room-code').value.trim().toUpperCase(),get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
+get<HTMLButtonElement>('create').onclick=()=>{activateAudio();network.create(get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
+get<HTMLButtonElement>('join').onclick=()=>{activateAudio();network.join(get<HTMLInputElement>('room-code').value.trim().toUpperCase(),get<HTMLInputElement>('nickname').value.trim()||'倖存者');};
 get<HTMLButtonElement>('start-wave').onclick=()=>network.start();
 get<HTMLButtonElement>('retry').onclick=()=>network.retryLevel();
 get<HTMLButtonElement>('next-level').onclick=()=>network.nextLevel();
@@ -552,10 +670,10 @@ get<HTMLButtonElement>('restart-campaign').onclick=()=>network.restartCampaign()
 get<HTMLButtonElement>('shop-reopen').onclick=()=>{
   if(network.session.phase==='intermission'){shop.open(self());visible(overlay,false);}
 };
-get<HTMLButtonElement>('enter').onclick=()=>{void sound.unlock();controller.controls.lock();};
+get<HTMLButtonElement>('enter').onclick=()=>{activateAudio();controller.controls.lock();};
 controller.controls.addEventListener('lock',()=>{
   if(network.session.phase==='playing'){
-    void sound.unlock();combatUI.setActive(true);visible(overlay,false);
+    activateAudio();combatUI.setActive(true);visible(overlay,false);
     for(const el of [hud,weaponHud,playerHud,mapWrap])visible(el,true);
     renderHUD();
   }
@@ -574,7 +692,8 @@ function tryFire(){
   if(!controller.controls.isLocked||network.session.phase!=='playing'||downed||shop.isOpen||desiredSwitch)return;
   if(weapon.fire()){
     combatUI.onShot(WEAPONS[selectedId].recoil);
-    sound.playWeaponShot(WEAPONS[selectedId].category,isIndoors());
+    if(selectedId==='sniper_rifle')sound.playSfx('sniper',.82,isIndoors()?.22:.01);
+    else sound.playWeaponShot(WEAPONS[selectedId].category,isIndoors());
     sendPose();
     const id=++shotCounter;
     const muzzle=weapon.getMuzzleWorldPosition();
@@ -582,7 +701,7 @@ function tryFire(){
     if(pendingMuzzles.size>24)pendingMuzzles.delete(pendingMuzzles.keys().next().value!);
     network.send({type:'shoot',shotId:id});updateAmmo();
   }else if(weapon.state.ammo<=0&&performance.now()-emptyWarningAt>1000){
-    emptyWarningAt=performance.now();alertMessage('彈匣已空，按 R 換彈');
+    emptyWarningAt=performance.now();sound.playSfx('empty',.28);alertMessage('彈匣已空，按 R 換彈');
   }
 }
 renderer.domElement.addEventListener('mousedown',event=>{
@@ -590,6 +709,7 @@ renderer.domElement.addEventListener('mousedown',event=>{
   if(event.button===0){primaryHeld=true;tryFire();}
   else if(event.button===2){
     aimHeld=true;aim.setRightButtonHeld(true);network.send({type:'aim',active:true});
+    sound.playSfx('ads',.20);
     updateSensitivity();
   }
 });
@@ -602,7 +722,9 @@ renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
 renderer.domElement.addEventListener('wheel',event=>{
   if(aimHeld&&selectedId==='sniper_rifle'&&controller.controls.isLocked){
     event.preventDefault();
-    if(aim.cycleScope(event.deltaY>0?1:-1))alertMessage('狙擊鏡倍率已切換');
+    if(aim.cycleScope(event.deltaY>0?1:-1)){
+      sound.playSfx('ads',.22);alertMessage('狙擊鏡倍率已切換');
+    }
   }
 },{passive:false});
 window.addEventListener('keydown',event=>{
@@ -624,7 +746,7 @@ window.addEventListener('keydown',event=>{
     return;
   }
   if(event.code==='KeyV'&&!event.repeat&&network.session.phase==='playing'&&performance.now()-lastShove>650){
-    lastShove=performance.now();sendPose();network.send({type:'shove'});return;
+    lastShove=performance.now();sound.playSfx('shove',.40);sendPose();network.send({type:'shove'});return;
   }
   if(event.code==='F8'&&!event.repeat){
     event.preventDefault();
@@ -650,7 +772,10 @@ window.addEventListener('keydown',event=>{
     if(id)network.send({type:'equip',weaponId:id});return;
   }
   if(event.code==='KeyR'&&controller.controls.isLocked&&!downed&&weapon.reload()){
-    network.send({type:'reload'});alertMessage('正在更換彈匣…');
+    network.send({type:'reload'});
+    sound.playSfx('reloadMag',.44);
+    sound.playSfx('reloadBolt',.21);
+    alertMessage('正在更換彈匣…');
   }
 });
 // Dispatch jumps at keydown instead of waiting for the next render frame:
@@ -666,6 +791,7 @@ window.addEventListener('keydown',e=>pressed.add(e.code));
 window.addEventListener('keyup',e=>pressed.delete(e.code));
 window.addEventListener('blur',()=>pressed.clear());
 const clock=new THREE.Clock();let lastPerfUI=0,lastRevive=0,lastMap=0;
+let lastStep=0,lastEnvAudio=0,lastGrounded=true;
 function frame(){
   requestAnimationFrame(frame);
   const wallDelta=clock.getDelta();
@@ -702,6 +828,22 @@ function frame(){
   }
   if(network.session.phase!=='playing'||!controller.controls.isLocked||downed||shop.isOpen)physicsClock.reset();
   const [dx,dy]=controller.consumeLook();weapon.update(dt,dx,dy,controller.moving);
+  soundtrack.update(dt);
+  if(now-lastMusicRefresh>800){lastMusicRefresh=now;updateMusic();}
+  if(now-lastEnvAudio>1200){
+    lastEnvAudio=now;
+    soundtrack.setEnvironment(currentEnvironment?.powerOnline!==false,objectivePhase==='extraction',isIndoors());
+  }
+  const isWalking=network.session.phase==='playing'&&controller.controls.isLocked&&!downed&&controller.moving;
+  if(isWalking&&controller.isGrounded&&now-lastStep>(controller.sprinting?280:420)){
+    lastStep=now;
+    sound.playSfx(isIndoors()?'stepMetal':'stepConcrete',controller.sprinting?.33:.23);
+  }
+  if(network.session.phase==='playing'&&controller.controls.isLocked){
+    if(lastGrounded&&!controller.isGrounded)sound.playSfx('jump',.25);
+    if(!lastGrounded&&controller.isGrounded)sound.playSfx('land',.40);
+  }
+  lastGrounded=controller.isGrounded;
   blackoutWorld.render(dt);
   const canUseWorld=network.session.phase==='playing'&&controller.controls.isLocked&&!downed&&!shop.isOpen;
   const nearbyWorld=canUseWorld
@@ -738,5 +880,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
+  soundtrack.dispose();sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
 });
