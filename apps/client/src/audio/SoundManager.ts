@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import type { ZombieRecord } from '../network/Multiplayer';
 import type { WeaponCategory } from '../game/WeaponCatalog';
 
-type AudioKey = 'pistol'|'smg'|'rifle'|'lmg'|'zombie'|'special'|'hit'|'headshot'|'heartbeat';
+export type GameSfx =
+  'sniper'|'shotgun'|'reloadMag'|'reloadBolt'|'empty'|'switch'|'ads'|
+  'stepConcrete'|'stepMetal'|'stepWet'|'jump'|'land'|'shove'|'damage'|'armor'|
+  'heal'|'revive'|'downed'|'click'|'purchase'|'loot'|'skill'|'objective'|
+  'failure'|'blackout'|'generator'|'powerRestore'|'relay'|'alarm'|
+  'van'|'convoy'|'tunnel'|'extraction'|'horde'|'bossIntro'|'success'|'radioClick'|
+  'walker'|'runner'|'brute'|'spitter'|'screamer'|'climber'|'juggernaut'|'boss'|'enemyAttack'|'enemyDeath';
+type AudioKey = 'pistol'|'smg'|'rifle'|'lmg'|'zombie'|'special'|'hit'|'headshot'|'heartbeat'|GameSfx;
 
 const URLS: Record<AudioKey,string> = {
   pistol:'/assets/audio/weapons/pistol.wav',
@@ -13,7 +20,35 @@ const URLS: Record<AudioKey,string> = {
   special:'/assets/audio/infected/special-spawn.wav',
   hit:'/assets/audio/ui/hitmarker.wav',
   headshot:'/assets/audio/ui/headshot.wav',
-  heartbeat:'/assets/audio/ui/heartbeat.wav'
+  heartbeat:'/assets/audio/ui/heartbeat.wav',
+  sniper:'/assets/audio/weapons/sniper.wav',shotgun:'/assets/audio/weapons/shotgun.wav',
+  reloadMag:'/assets/audio/weapons/reload-mag.wav',reloadBolt:'/assets/audio/weapons/reload-bolt.wav',
+  empty:'/assets/audio/weapons/empty.wav',switch:'/assets/audio/weapons/switch.wav',
+  ads:'/assets/audio/weapons/ads.wav',
+  stepConcrete:'/assets/audio/player/step-concrete.wav',stepMetal:'/assets/audio/player/step-metal.wav',
+  stepWet:'/assets/audio/player/step-wet.wav',jump:'/assets/audio/player/jump.wav',
+  land:'/assets/audio/player/land.wav',shove:'/assets/audio/player/shove.wav',
+  damage:'/assets/audio/player/hit.wav',armor:'/assets/audio/player/armor.wav',
+  heal:'/assets/audio/player/heal.wav',revive:'/assets/audio/player/revive.wav',
+  downed:'/assets/audio/player/downed.wav',
+  click:'/assets/audio/ui/click.wav',purchase:'/assets/audio/ui/purchase.wav',
+  loot:'/assets/audio/ui/loot.wav',skill:'/assets/audio/ui/skill.wav',
+  objective:'/assets/audio/ui/objective.wav',failure:'/assets/audio/ui/failure.wav',
+  blackout:'/assets/audio/world/blackout.wav',
+  generator:'/assets/audio/world/generator.wav',
+  powerRestore:'/assets/audio/world/power-restore.wav',
+  relay:'/assets/audio/world/relay.wav',alarm:'/assets/audio/world/alarm.wav',
+  van:'/assets/audio/world/evac-van.wav',convoy:'/assets/audio/world/evac-convoy.wav',
+  tunnel:'/assets/audio/world/evac-tunnel.wav',
+  extraction:'/assets/audio/world/extraction.wav',horde:'/assets/audio/world/horde.wav',
+  bossIntro:'/assets/audio/world/boss-intro.wav',success:'/assets/audio/world/success.wav',
+  radioClick:'/assets/audio/world/radio-click.wav',
+  walker:'/assets/audio/infected/walker.wav',
+  runner:'/assets/audio/infected/runner.wav',brute:'/assets/audio/infected/brute.wav',
+  spitter:'/assets/audio/infected/spitter.wav',screamer:'/assets/audio/infected/screamer.wav',
+  climber:'/assets/audio/infected/climber.wav',juggernaut:'/assets/audio/infected/juggernaut.wav',
+  boss:'/assets/audio/infected/boss.wav',enemyAttack:'/assets/audio/infected/attack.wav',
+  enemyDeath:'/assets/audio/infected/death.wav'
 };
 
 type LocalVoice = { source: THREE.Audio; send: GainNode };
@@ -48,6 +83,7 @@ export class SoundManager {
   private readonly maxLocalVoices = 18;
   private readonly maxRemoteVoices = 12;
   private readonly maxEnemyVoices = 12;
+  private effectsVolume = 0.8;
 
   constructor(camera:THREE.Camera,scene:THREE.Scene){
     this.camera=camera;this.scene=scene;
@@ -112,13 +148,21 @@ export class SoundManager {
     const voice={source,send};this.local.push(voice);return voice;
   }
 
+  playSfx(key:GameSfx,volume=0.55,wet=0):boolean{
+    return this.playLocal(key,volume,wet);
+  }
+
+  setEffectsVolume(value:number):void{
+    this.effectsVolume=THREE.MathUtils.clamp(value,0,1);
+  }
+
   private playLocal(key:AudioKey,volume:number,wet=0):boolean{
     if(!this.canPlay())return false;
     const buffer=this.buffers.get(key),voice=this.getLocal();
     if(!buffer||!voice)return false;
     voice.source.setBuffer(buffer);
     voice.source.setLoop(false);
-    voice.source.setVolume(volume);
+    voice.source.setVolume(volume*this.effectsVolume);
     voice.send.gain.value=THREE.MathUtils.clamp(wet,0,.32);
     voice.source.play();
     return true;
@@ -150,7 +194,7 @@ export class SoundManager {
     voice.position.copy(point);
     voice.updateMatrixWorld(true);
     voice.setBuffer(buffer);voice.setLoop(false);
-    voice.setVolume(.70);voice.play();return true;
+    voice.setVolume(.70*this.effectsVolume);voice.play();return true;
   }
 
   /** Called on snapshots; spatial sources track only nearby audible infected. */
@@ -183,20 +227,20 @@ export class SoundManager {
       entry.anchor.position.set(z.x,(z.y??0)+1.45,z.z);
       entry.kind=z.kind;
       if(first && special){
-        if(this.voiceCursor++%3===0)this.playEnemy(entry,'special',.85);
+        if(this.voiceCursor++%3===0)this.playEnemy(entry,z.kind,.85);
         entry.cooldownUntil=now+4500;
       } else if(now>=entry.cooldownUntil && !entry.source.isPlaying){
-        if((this.voiceCursor++%3)===0)this.playEnemy(entry,special?'special':'zombie',special ? 0.67 : 0.42);
+        if((this.voiceCursor++%3)===0)this.playEnemy(entry,z.kind,special ? 0.67 : 0.42);
         entry.cooldownUntil=now+4300+(z.id%5)*1000;
       }
     }
   }
 
-  private playEnemy(entry:EnemyVoice,key:'zombie'|'special',volume:number):void{
+  private playEnemy(entry:EnemyVoice,key:AudioKey,volume:number):void{
     const buffer=this.buffers.get(key);
     if(!buffer||entry.source.isPlaying)return;
     entry.source.setBuffer(buffer);entry.source.setLoop(false);
-    entry.source.setVolume(volume);entry.source.play();
+    entry.source.setVolume(volume*this.effectsVolume);entry.source.play();
   }
 
   private removeEnemy(id:number):void{
