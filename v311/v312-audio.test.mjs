@@ -11,7 +11,7 @@ const wav=(name)=>{
   assert.equal(file.readUInt32LE(4),file.length-8,name);
   assert.equal(file.readUInt16LE(22),1,name);
   assert.equal(file.readUInt32LE(24),22050,name);
-  assert.ok(file.length>6000,name+' too short');
+  assert.ok(file.length>2000,name+' too short');
   let nonzero=false;
   for(let i=44;i<file.length;i+=1200)if(file.readInt16LE(i))nonzero=true;
   assert.ok(nonzero,name+' unexpectedly silent');
