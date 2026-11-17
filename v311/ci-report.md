@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: 47f115288c047b08ed8ac03fcbe0995b7c4b7b1a
+Source commit: 39bf87a0d531c466ebb387b5774ea54763478609
 Rules: success
 TypeScript/Vite: success
 Existing game regression: success
@@ -27,14 +27,14 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.83s[39m
+[32m✓ built in 1.60s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 48 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.483672
+  duration_ms: 0.416202
   type: 'test'
   ...
 1..48
@@ -45,19 +45,19 @@ ok 48 - both crowd and rig renderers respect identical server facing without 180
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4552.79341
+# duration_ms 4466.662706
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.357503
+  duration_ms: 0.310423
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.652215
+  duration_ms: 0.52221
   type: 'test'
   ...
 1..65
@@ -68,5 +68,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6408.35909
+# duration_ms 6172.625946
 ~~~
