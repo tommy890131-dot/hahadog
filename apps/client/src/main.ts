@@ -132,7 +132,6 @@ renderer.domElement.classList.add('game-canvas');
 configureSurfaceMaterialQuality(renderer);
 const world=new World(scene),controller=new FirstPersonController(camera,renderer.domElement,world);
 const blackoutWorld=new BlackoutWorldVisuals(scene);
-let currentEnvironment:EnvironmentState|null=null;
 let objectivePhase:'objectives'|'extraction'='objectives';
 const environmentStatus=document.createElement('div');
 environmentStatus.id='blackout-status';
@@ -143,7 +142,6 @@ environmentPrompt.id='environment-prompt';
 environmentPrompt.style.cssText='position:fixed;bottom:165px;left:50%;transform:translateX(-50%);z-index:6;background:#0b2026de;color:#e8ffef;border:1px solid #76cab5;border-radius:5px;padding:8px 16px;font:700 13px sans-serif;pointer-events:none;display:none';
 document.body.append(environmentPrompt);
 function updateEnvironment(environment:EnvironmentState|null):void{
-  currentEnvironment=environment;
   blackoutWorld.setState(environment);
   if(!environment){environmentStatus.style.display='none';environmentPrompt.style.display='none';return;}
   environmentStatus.style.display='block';
