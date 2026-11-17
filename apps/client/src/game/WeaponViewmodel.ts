@@ -83,6 +83,8 @@ export class WeaponViewmodel {
   private machineGunCycle=0;
   private machineGunPulse=0;
   private disposed = false;
+  private scoped = false;
+  private readonly muzzleWorld = new THREE.Vector3();
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -181,6 +183,24 @@ export class WeaponViewmodel {
     if (mode === 'Reload') next.setDuration(this.state.tuning.reloadMs / 1000);
     next.fadeIn(mode === 'Fire' ? 0.025 : 0.075).play();
     this.activeAction = next;
+  }
+
+  /**
+   * The same muzzle flash socket used by this gun's viewmodel is the visual
+   * starting point of bullets. World transforms include camera pitch/yaw,
+   * weapon sway, recoil, socket offset and the current firing animation.
+   */
+  getMuzzleWorldPosition(target = new THREE.Vector3()): THREE.Vector3 {
+    this.muzzleFlash.updateWorldMatrix(true, false);
+    return this.muzzleFlash.getWorldPosition(target);
+  }
+
+  /** Hide the scope's first-person gun geometry while the scope fills the view. */
+  setScoped(active: boolean): void {
+    if (this.scoped === active) return;
+    this.scoped = active;
+    this.modelInstance.visible = !active;
+    this.muzzleFlash.visible = !active;
   }
 
   /** Visual shot is immediate; server still decides ammo consumption and hits. */
