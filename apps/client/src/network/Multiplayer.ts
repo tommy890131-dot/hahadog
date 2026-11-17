@@ -35,14 +35,22 @@ export class Multiplayer {
   onEvent:(event:ServerEvent)=>void=()=>{};
   onStatus:(status:string)=>void=()=>{};
   private retry?:number;
+  private disposed=false;
+  private reconnectAttempts=0;
   constructor(){ this.connect(); }
   connect(){
-    if(this.ws && (this.ws.readyState===0 || this.ws.readyState===1)) return;
+    if(this.disposed||(this.ws && (this.ws.readyState===0 || this.ws.readyState===1)))return;
+    clearTimeout(this.retry);this.retry=undefined;
     const ws = new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
     this.ws=ws;
     this.onStatus('伺服器連線中…');
-    ws.onopen=()=>this.onStatus('已連線 · 4 人合作房間');
+    ws.onopen=()=>{
+      if(this.disposed||ws!==this.ws)return;
+      this.reconnectAttempts=0;
+      this.onStatus('已連線 · 4 人合作房間');
+    };
     ws.onmessage=event=>{
+      if(this.disposed||ws!==this.ws)return;
       try {
         const msg=JSON.parse(event.data) as ServerEvent;
         if(msg.type==='hello' && msg.id) this.session.selfId=msg.id;
@@ -94,10 +102,16 @@ export class Multiplayer {
       } catch(error){console.warn('Invalid game message',error);}
     };
     ws.onclose=()=>{
+      if(this.disposed||ws!==this.ws)return;
+      this.ws=null;
       this.session.phase='menu';
-      this.onStatus('連線中斷，重新連線中…');
+      this.session.players=[];this.session.zombies=[];
       this.onEvent({type:'disconnected'});
-      this.retry=window.setTimeout(()=>this.connect(),2000);
+      const retryMs=Math.min(15000,1500*Math.pow(1.6,Math.min(6,this.reconnectAttempts++)))
+        +Math.floor(Math.random()*400);
+      this.onStatus('連線中斷 · '+Math.ceil(retryMs/1000)+' 秒後重試');
+      clearTimeout(this.retry);
+      this.retry=window.setTimeout(()=>this.connect(),retryMs);
     };
   }
   send(data:Record<string, unknown>){if(this.ws?.readyState===WebSocket.OPEN) this.ws.send(JSON.stringify(data));}
@@ -108,5 +122,14 @@ export class Multiplayer {
   nextLevel(){this.send({type:'nextLevel'});}
   restartCampaign(){this.send({type:'restartCampaign'});}
   move(x:number,z:number,yaw:number,pitch:number,seq:number){this.send({type:'move',x,z,yaw,pitch,seq});}
-  dispose(){clearTimeout(this.retry); this.ws?.close();}
+  dispose(){
+    if(this.disposed)return;
+    this.disposed=true;
+    clearTimeout(this.retry);this.retry=undefined;
+    const socket=this.ws;this.ws=null;
+    if(socket){
+      socket.onclose=null;socket.onmessage=null;socket.onopen=null;
+      if(socket.readyState===WebSocket.OPEN||socket.readyState===WebSocket.CONNECTING)socket.close(1000,'Leaving game');
+    }
+  }
 }
