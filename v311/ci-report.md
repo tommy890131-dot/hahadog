@@ -1,5 +1,5 @@
 # V3.11 CI report
-Source commit: f83867c0d78326b95d5d72423e0015701c180aca
+Source commit: 8cee666032755ef3d88295b8654ee67e5ce85034
 Rules: success
 TypeScript/Vite: success
 Existing game regression: success
@@ -21,20 +21,20 @@ rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                 [39m[1m[2m    0.44 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
 [2mdist/[22m[2massets/[22m[35mindex-pdsy-Sx9.css  [39m[1m[2m   26.06 kB[22m[1m[22m[2m │ gzip:   7.11 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-Cx9h4jAI.js   [39m[1m[33m1,722.65 kB[39m[22m[2m │ gzip: 284.15 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-Doxh4wHQ.js   [39m[1m[33m1,724.82 kB[39m[22m[2m │ gzip: 284.68 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.97s[39m
+[32m✓ built in 1.43s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 55 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.481347
+  duration_ms: 0.399544
   type: 'test'
   ...
 1..55
@@ -45,19 +45,19 @@ ok 55 - both crowd and rig renderers respect identical server facing without 180
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4960.361542
+# duration_ms 4457.065032
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.325487
+  duration_ms: 0.297646
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.608314
+  duration_ms: 0.519407
   type: 'test'
   ...
 1..65
@@ -68,5 +68,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6391.265113
+# duration_ms 6085.027959
 ~~~
