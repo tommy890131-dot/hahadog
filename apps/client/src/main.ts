@@ -892,5 +892,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  soundtrack.dispose();sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
+  network.dispose();soundtrack.dispose();sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
 });
