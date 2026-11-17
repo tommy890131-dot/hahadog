@@ -692,7 +692,7 @@ function tryFire(){
   if(!controller.controls.isLocked||network.session.phase!=='playing'||downed||shop.isOpen||desiredSwitch)return;
   if(weapon.fire()){
     combatUI.onShot(WEAPONS[selectedId].recoil);
-    if(selectedId==='sniper_rifle')sound.playSfx('sniper',.82,isIndoors()?.22:.01);
+    if(selectedId==='sniper_rifle')sound.playSfx('sniper',.82,isIndoors()?0.22:0.01);
     else sound.playWeaponShot(WEAPONS[selectedId].category,isIndoors());
     sendPose();
     const id=++shotCounter;
