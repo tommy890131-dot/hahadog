@@ -80,6 +80,17 @@ app.innerHTML=`
   <div id="stats-tip">擊殺殭屍取得金錢 · 每波結束享有 30 秒安全補給</div></div>
 <div id="intermission-banner" class="hidden"><span>屍潮已清除 · 下一波倒數</span><strong id="intermission-countdown">00:30</strong><button id="shop-reopen" type="button">開啟商店</button></div>
 <div id="crosshair" aria-hidden="true"><span class="arm top"></span><span class="arm right"></span><span class="arm bottom"></span><span class="arm left"></span><span class="reticle-dot"></span><span id="hitmarker">×</span></div>
+<div id="sniper-scope" class="sniper-scope" aria-hidden="true">
+  <div class="scope-lens">
+    <div class="scope-reticle">
+      <div class="scope-cross-v"></div><div class="scope-cross-h"></div>
+      <div class="scope-center-dot"></div>
+      <div class="scope-range range-left"></div><div class="scope-range range-right"></div>
+      <div class="scope-range range-lower"></div>
+    </div>
+    <div class="scope-magnification"><span id="scope-zoom">4×</span></div>
+  </div>
+</div>
 <div id="critical-vignette" aria-hidden="true"></div>
 <section id="scoreboard" class="hidden" aria-label="小隊戰績"><h2>小隊戰績 · SQUAD STATUS</h2><table><thead><tr><th>玩家</th><th>LV</th><th>武器</th><th>HP / 護甲</th><th>金錢</th><th>擊殺</th></tr></thead><tbody id="scoreboard-rows"></tbody></table><p>放開 TAB 關閉</p></section>
 <div id="weapon-hud" class="hidden"><div id="weapon-name" class="weapon-name">P9 戰術手槍</div>
@@ -93,6 +104,7 @@ const overlay=get<HTMLDivElement>('overlay'),hud=get<HTMLDivElement>('hud'),weap
 const playerHud=get<HTMLDivElement>('player-hud'),mapWrap=get<HTMLDivElement>('minimap-wrap');
 const menu=get<HTMLElement>('main-menu'),lobby=get<HTMLElement>('lobby');
 const settingsPanel=get<HTMLElement>('settings-panel'),settingsToggle=get<HTMLButtonElement>('settings-toggle');
+const sniperScope=get<HTMLElement>('sniper-scope');
 settingsToggle.onclick=()=>{
   const open=settingsPanel.classList.contains('hidden');
   visible(settingsPanel,open);
@@ -187,6 +199,40 @@ weapon=new WeaponViewmodel(camera,weaponAsset,()=>updateAmmo(),{tuning:toTuning(
 get<HTMLElement>('asset-label').textContent=weaponAsset.isPlaceholder?
   '目前使用幾何備用武器；稍後可換成 GLB':'已載入精細 GLB 武器 · 動畫由 Viewmodel 狀態機驅動';
 let desiredSwitch:WeaponId|null=null,requestToken=0;
+let shotCounter=0;
+const pendingMuzzles=new Map<number,{point:{x:number;y:number;z:number};at:number}>();
+const shotRaycaster=new THREE.Raycaster();
+const shotVecFrom=new THREE.Vector3(),shotVecTo=new THREE.Vector3(),shotVector=new THREE.Vector3();
+function fireVisualTracer(event:ServerEvent):void{
+  if(!event.to||!event.from)return;
+  const own=event.by===network.session.selfId;
+  let from=event.visualFrom??event.from;
+  if(own&&typeof event.shotId==='number'){
+    const pending=pendingMuzzles.get(event.shotId);
+    if(pending){from=pending.point;pendingMuzzles.delete(event.shotId);}
+  }
+  // Keep the authoritative server-corrected impact point and optionally
+  // clip the true local muzzle-to-target segment at nearer static geometry.
+  let to=event.visualTo??event.to;
+  if(own){
+    shotVecFrom.set(from.x,from.y,from.z);
+    shotVecTo.set(event.to.x,event.to.y,event.to.z);
+    shotVector.subVectors(shotVecTo,shotVecFrom);
+    const total=shotVector.length();
+    if(total>.04&&total<125){
+      shotRaycaster.set(shotVecFrom,shotVector.divideScalar(total));
+      shotRaycaster.near=0.035;
+      shotRaycaster.far=total;
+      const wall=shotRaycaster.intersectObjects(world.blockers,false)[0];
+      if(wall&&wall.distance<total-.06){
+        const cutoff=Math.max(.02,wall.distance-.03);
+        to={x:from.x+shotVector.x*cutoff,
+            y:from.y+shotVector.y*cutoff,z:from.z+shotVector.z*cutoff};
+      }else to=event.to;
+    }
+  }
+  tracers.spawn(from,to,'gun');
+}
 async function swapWeapon(id:WeaponId,level:number,ammo:number,reserve:number):Promise<void>{
   if(desiredSwitch===id)return;
   desiredSwitch=id;
@@ -196,7 +242,7 @@ async function swapWeapon(id:WeaponId,level:number,ammo:number,reserve:number):P
   if(token!==requestToken)return;
   const next=new WeaponViewmodel(camera,asset,()=>updateAmmo(),{tuning:toTuning(id,level),serverAuthoritative:true});
   next.resetFromServer(ammo,reserve);
-  weapon.dispose();weapon=next;selectedId=id;modelLevel=level;desiredSwitch=null;
+  weapon.dispose();weapon=next;selectedId=id;modelLevel=level;desiredSwitch=null;pendingMuzzles.clear();
   updateAmmo();
 }
 function updateAmmo(){
@@ -435,7 +481,7 @@ network.onEvent=(event:ServerEvent)=>{
   }
   if(event.type==='shot'){
     shotFx.onServerShot(event);
-    if(event.from&&event.to)tracers.spawn(event.from,event.to,'gun');
+    fireVisualTracer(event);
     if(event.by===network.session.selfId&&event.hit){
       combatUI.onConfirmedHit(event.headshot===true);
       sound.playHitmarker(event.headshot===true);
@@ -491,7 +537,12 @@ function tryFire(){
   if(weapon.fire()){
     combatUI.onShot(WEAPONS[selectedId].recoil);
     sound.playWeaponShot(WEAPONS[selectedId].category,isIndoors());
-    sendPose();network.send({type:'shoot'});updateAmmo();
+    sendPose();
+    const id=++shotCounter;
+    const muzzle=weapon.getMuzzleWorldPosition();
+    pendingMuzzles.set(id,{point:{x:muzzle.x,y:muzzle.y,z:muzzle.z},at:performance.now()});
+    if(pendingMuzzles.size>24)pendingMuzzles.delete(pendingMuzzles.keys().next().value!);
+    network.send({type:'shoot',shotId:id});updateAmmo();
   }else if(weapon.state.ammo<=0&&performance.now()-emptyWarningAt>1000){
     emptyWarningAt=performance.now();alertMessage('彈匣已空，按 R 換彈');
   }
@@ -582,6 +633,13 @@ function frame(){
   aim.setSprinting(controller.sprinting);
   const ads=aim.update(dt);
   if(Math.abs(camera.fov-ads.fov)>.02){camera.fov=ads.fov;camera.updateProjectionMatrix();}
+  const scoped=selectedId==='sniper_rifle'&&ads.aiming&&network.session.phase==='playing'
+    &&controller.controls.isLocked&&!downed&&!shop.isOpen;
+  sniperScope.classList.toggle('active',scoped);
+  sniperScope.classList.toggle('zoom-8',scoped&&ads.zoom>=8);
+  get<HTMLElement>('scope-zoom').textContent=ads.zoom+'×';
+  get<HTMLElement>('crosshair').style.visibility=scoped?'hidden':'visible';
+  weapon.setScoped(scoped);
   if(network.session.phase==='intermission'){
     const remaining=Math.max(0,shopRemainingUntil-now);
     shop.setRemaining(remaining);
@@ -608,6 +666,8 @@ function frame(){
   world.updateShadowFocus(camera.position);
   crowd.render(dt,camera,adaptive.detailDistance,adaptive.visibleDistance);teammates.render(dt);
   battleExtras.animate(dt);tracers.update(dt);impacts.update(dt);
+  if(pendingMuzzles.size)for(const [id,pending] of pendingMuzzles)
+    if(now-pending.at>1200)pendingMuzzles.delete(id);
   renderer.info.reset();
   composer.render(dt);
   adaptive.sample(wallDelta*1000,network.session.phase==='playing'&&controller.controls.isLocked&&!document.hidden);
