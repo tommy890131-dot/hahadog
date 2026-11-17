@@ -3,7 +3,7 @@ import type { ZombieRecord } from '../network/Multiplayer';
 import type { WeaponCategory } from '../game/WeaponCatalog';
 
 export type GameSfx =
-  'sniper'|'shotgun'|'reloadMag'|'reloadBolt'|'empty'|'switch'|'ads'|
+  'pistol'|'smg'|'rifle'|'lmg'|'sniper'|'shotgun'|'reloadMag'|'reloadBolt'|'empty'|'switch'|'ads'|
   'stepConcrete'|'stepMetal'|'stepWet'|'jump'|'land'|'shove'|'damage'|'armor'|
   'heal'|'revive'|'downed'|'click'|'purchase'|'loot'|'skill'|'objective'|
   'failure'|'blackout'|'generator'|'powerRestore'|'relay'|'alarm'|
