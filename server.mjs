@@ -1,5 +1,7 @@
 import http from 'node:http';
 import {createRound,enterPlayer,setPlayerState,completeObjective,stepRound,computeThreat} from './v311/survival-round.mjs';
+import {createBlackoutProtocol,advanceBlackoutProtocol,triggerBlackout,interactWithWorld,
+  publicEnvironment,inSelectedExtractionZone,ROUTES} from './v312/BlackoutProtocol.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
 import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
@@ -144,7 +146,8 @@ function snapshot(room,now){
     players:[...room.players.values()].map(publicPlayer),
     zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing,moving:z.moving===true,attacking:Date.now()-(z.lastAttackAt??0)<420})),
     defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
-    bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0});
+    bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0,
+    environment:V311&&room.protocol?publicEnvironment(room.protocol,now):undefined});
 }
 function startMatch(room,{preserveCampaign=false}={}){
   const freshRun=room.phase==='ended';
@@ -163,12 +166,15 @@ function startMatch(room,{preserveCampaign=false}={}){
   if(V311){
     const stage=stageAt(room.levelIndex??0);
     room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:stage.extractionMs});
-    room.survival.extractionZone='safehouse';
+    room.survival.extractionZone='multi_route';
+    room.protocol=createBlackoutProtocol({seed:Date.now()+Math.floor(Math.random()*1000000),now:Date.now()});
     room.missionKills=0;
     room.defenses=[];room.loot=[];room.bossSpawned=false;room.nextExtraEventAt=Date.now()+45000;room.nextItemId=1;
     for(const p of room.players.values())enterPlayer(room.survival,p.id);
     stepRound(room.survival,Date.now());
-    announce(room,{type:'campaignStart',levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective});
+    announce(room,{type:'campaignStart',levelIndex:room.levelIndex,levelId:stage.id,
+      levelLabel:stage.label,goal:stage.goal,objective:stage.objective,
+      environment:publicEnvironment(room.protocol,Date.now())});
     announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective,progress:0,missionPhase:'objectives'});
   }
   startWave(room);
@@ -194,9 +200,11 @@ function rewardKill(room,player,z,headshot){
     room.missionKills=(room.missionKills||0)+1;
     if(room.missionKills>=stageAt(room.levelIndex).goal && room.bossSpawned && !room.zombies.some(z=>z.kind==='boss'&&z.hp>0)){
       completeObjective(room.survival);
+      room.protocol.objectiveComplete=true;
       stepRound(room.survival,Date.now());
       announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:LEVELS[room.levelIndex].id,levelLabel:LEVELS[room.levelIndex].label,goal:stageAt(room.levelIndex).goal,progress:stageAt(room.levelIndex).goal,missionPhase:'extraction',
-        message:'任務完成！90 秒內全隊抵達安全屋撤離點'});
+        environment:publicEnvironment(room.protocol,Date.now()),
+        message:'任務完成！選擇地圖上兩條撤離路線之一，按 F 發出撤離信號後全隊集合'});
     }else announce(room,{type:'missionProgress',levelIndex:room.levelIndex,progress:Math.min(room.missionKills,stageAt(room.levelIndex).goal),goal:stageAt(room.levelIndex).goal});
   }
   player.maxHp+=progress.levelUps*5;
@@ -499,6 +507,24 @@ function onMessage(peer,msg){
   if(V311&&msg.type==='selectClass'&&room.phase==='lobby'&&validClass(msg.classId)){
     p.classId=msg.classId;syncLobby(room);return;
   }
+  if(V311&&msg.type==='interactWorld'){
+    const outcome=interactWithWorld(room.protocol,{
+      player:p,id:msg.id,now,phase:room.phase,downed:p.downed
+    });
+    send(peer,{type:'environmentAction',ok:outcome.ok,message:outcome.message,action:outcome.action});
+    if(outcome.ok){
+      if(outcome.action==='alarm'){
+        room.pending=Math.min(135,room.pending+8);
+        if(room.loot.length<10){
+          const item={id:room.nextItemId++,x:-24,y:0,z:0,rarity:'rare',claimed:false};
+          room.loot.push(item);announce(room,{type:'lootSpawn',item});
+        }
+      }
+      announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
+        message:outcome.message,by:p.id,action:outcome.action});
+    }
+    return;
+  }
   if(V311&&msg.type==='aim'&&typeof msg.active==='boolean'){
     p.aiming=msg.active&&room.phase==='playing'&&!p.downed;return;
   }
@@ -624,7 +650,10 @@ function finishCampaign(room,result){
   room.pending=0;room.zombies=[];room.damageTimes=[];room.fields.clear();room.revive.clear();
   announce(room,{type:'missionEnd',success:won,result:room.lastResult,levelIndex:room.levelIndex,
     levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
-    message:won?'小隊成功撤離！':'撤離任務失敗'});
+    routeId:won?room.protocol?.selectedRoute:null,
+    message:won&&room.protocol?.selectedRoute
+      ?'小隊成功由「'+ROUTES[room.protocol.selectedRoute].label+'」撤離！'
+      :won?'小隊成功撤離！':'撤離任務失敗'});
   syncLobby(room);
 }
 function tick(){
@@ -636,8 +665,16 @@ function tick(){
     }
     if(room.phase!=='playing')continue;
     if(V311&&room.survival){
+      const environmentChange=advanceBlackoutProtocol(room.protocol,now);
+      if(environmentChange){
+        const label=environmentChange==='blackout'?'全城突然停電！前往備用發電機修復':'城市備用電源自動恢復';
+        announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
+          action:environmentChange,message:label});
+      }
       for(const p of room.players.values())
-        setPlayerState(room.survival,p.id,{alive:!p.downed&&p.hp>0,inZone:safe(p)&&Math.abs(p.y)<2});
+        setPlayerState(room.survival,p.id,{
+          alive:!p.downed&&p.hp>0,inZone:inSelectedExtractionZone(room.protocol,p)
+        });
       const result=stepRound(room.survival,now);
       if(result==='won'||result==='lost'){
         finishCampaign(room,result);continue;
@@ -679,6 +716,10 @@ function tick(){
         room.nextExtraEventAt=now+45000;
         const event=nextEvent(Math.floor(Math.random()*100),room.pressure/100);
         if(event==='horde')room.pending=Math.min(135,room.pending+12);
+        if(event==='blackout'&&triggerBlackout(room.protocol,now)){
+          announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
+            action:'blackout',message:'隨機停電！城市照明中斷，使用 F 啟動備用發電機'});
+        }
         if(event==='supply_drop'){
           const p=living[0];if(p&&room.loot.length<10){
             const item={id:room.nextItemId++,x:p.x+3,y:p.y,z:p.z,rarity:lootRarity(Math.random()),claimed:false};
