@@ -283,7 +283,10 @@ function raySphere(from,dir,center,r){
   if(diff>r*r)return Infinity;
   return Math.max(0,dot-Math.sqrt(Math.max(0,r*r-diff)));
 }
-function shoot(room,p,now){
+function shoot(room,p,now,shotId){
+  // Visual barrel origin is derived on the server for remote teammates.
+  // Damage/hit tests below continue to use the authoritative camera ray.
+  const scopedShotId=Number.isSafeInteger(shotId)&&shotId>=0&&shotId<1e9?shotId:undefined;
   const w=WEAPONS[p.weaponId],a=activeAmmo(p);
   if(p.downed||room.phase!=='playing'||p.reloadUntil||now<(p.nextShotAt||0)||a.ammo<=0)return;
   const buffs=V311?classShotModifiers(p,now):{damage:1,spread:1,cadence:1,headshot:1};
@@ -292,6 +295,11 @@ function shoot(room,p,now){
   const yaw=p.yaw+rnd(-spread,spread),pitch=p.pitch+rnd(-spread*.7,spread*.7);
   const dir={x:Math.sin(yaw)*Math.cos(pitch),y:Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
   const from={x:p.x,y:p.y+1.52,z:p.z};let wallAt=115;
+  const visualFrom={
+    x:from.x+Math.cos(yaw)*.38+dir.x*1.05,
+    y:from.y-.29+dir.y*1.05,
+    z:from.z+Math.sin(yaw)*.38+dir.z*1.05
+  };
   for(const b of collisionBoxes)wallAt=Math.min(wallAt,rayBox(from,dir,b));
   const hits=[];
   for(const z of room.zombies){
@@ -314,7 +322,21 @@ function shoot(room,p,now){
   }
   if(killed)room.zombies=room.zombies.filter(z=>z.hp>0);
   const maxDistance=hits.length?Math.min(wallAt,hits[0].t):wallAt;
-  announce(room,{type:'shot',by:p.id,weaponId:p.weaponId,from,to:{x:from.x+dir.x*maxDistance,y:from.y+dir.y*maxDistance,z:from.z+dir.z*maxDistance},hit,killed,headshot,enemyId:hits[0]?.z.id??null});
+  const to={x:from.x+dir.x*maxDistance,y:from.y+dir.y*maxDistance,z:from.z+dir.z*maxDistance};
+  const offset={x:to.x-visualFrom.x,y:to.y-visualFrom.y,z:to.z-visualFrom.z};
+  const visualDistance=Math.hypot(offset.x,offset.y,offset.z);
+  let visualTo=to;
+  if(visualDistance>.001){
+    const heading={x:offset.x/visualDistance,y:offset.y/visualDistance,z:offset.z/visualDistance};
+    let wallDistance=visualDistance;
+    for(const box of collisionBoxes)wallDistance=Math.min(wallDistance,rayBox(visualFrom,heading,box));
+    if(Number.isFinite(wallDistance)&&wallDistance<visualDistance-.05)
+      visualTo={x:visualFrom.x+heading.x*Math.max(0,wallDistance-.03),
+        y:visualFrom.y+heading.y*Math.max(0,wallDistance-.03),
+        z:visualFrom.z+heading.z*Math.max(0,wallDistance-.03)};
+  }
+  announce(room,{type:'shot',by:p.id,shotId:scopedShotId,weaponId:p.weaponId,
+    from,to,visualFrom,visualTo,hit,killed,headshot,enemyId:hits[0]?.z.id??null});
 }
 function spawnZombie(room){
   let pos=null;
@@ -545,7 +567,7 @@ function onMessage(peer,msg){
     }
     return;
   }
-  if(msg.type==='shoot'){shoot(room,p,now);return;}
+  if(msg.type==='shoot'){shoot(room,p,now,msg.shotId);return;}
   if(msg.type==='reload'&&!p.downed&&room.phase==='playing'&&!p.reloadUntil){
     const w=WEAPONS[p.weaponId],a=activeAmmo(p);
     if(a.ammo<w.magazine && (a.reserve>0||w.category==='pistol')){
