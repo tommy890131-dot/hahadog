@@ -15,12 +15,13 @@ import { WeaponViewmodel } from './game/WeaponViewmodel';
 import {WEAPONS,isWeaponId,toTuning,type WeaponId} from './game/WeaponCatalog';
 import { FirstPersonController } from './player/FirstPersonController';
 import { World } from './world/World';
+import {BlackoutWorldVisuals} from './world/BlackoutWorldVisuals';
 import { configureSurfaceMaterialQuality, surfaceMaterialsReady } from './world/SurfaceMaterials';
 import { ZombieCrowd } from './world/ZombieCrowd';
 import { Teammates } from './world/Teammates';
 import { MapMini } from './world/MapMini';
 import { ShopUI } from './shop/ShopUI';
-import { Multiplayer,type ServerEvent,type PlayerRecord } from './network/Multiplayer';
+import { Multiplayer,type ServerEvent,type PlayerRecord,type EnvironmentState } from './network/Multiplayer';
 import { FixedPhysicsClock } from '../../../packages/shared/FixedPhysicsClock.mjs';
 import { MoveReconciler } from '../../../packages/shared/MoveReconciler.mjs';
 import './style.css';
@@ -130,6 +131,29 @@ app.prepend(renderer.domElement);
 renderer.domElement.classList.add('game-canvas');
 configureSurfaceMaterialQuality(renderer);
 const world=new World(scene),controller=new FirstPersonController(camera,renderer.domElement,world);
+const blackoutWorld=new BlackoutWorldVisuals(scene);
+let currentEnvironment:EnvironmentState|null=null;
+let objectivePhase:'objectives'|'extraction'='objectives';
+const environmentStatus=document.createElement('div');
+environmentStatus.id='blackout-status';
+environmentStatus.style.cssText='position:fixed;top:145px;right:24px;z-index:5;max-width:300px;color:#e4f5fa;background:#07151acb;border:1px solid #56868d;padding:10px 12px;font:600 12px/1.6 sans-serif;pointer-events:none;display:none;white-space:pre-line';
+document.body.append(environmentStatus);
+const environmentPrompt=document.createElement('div');
+environmentPrompt.id='environment-prompt';
+environmentPrompt.style.cssText='position:fixed;bottom:165px;left:50%;transform:translateX(-50%);z-index:6;background:#0b2026de;color:#e8ffef;border:1px solid #76cab5;border-radius:5px;padding:8px 16px;font:700 13px sans-serif;pointer-events:none;display:none';
+document.body.append(environmentPrompt);
+function updateEnvironment(environment:EnvironmentState|null):void{
+  currentEnvironment=environment;
+  blackoutWorld.setState(environment);
+  if(!environment){environmentStatus.style.display='none';environmentPrompt.style.display='none';return;}
+  environmentStatus.style.display='block';
+  const selected=environment.routes.find(x=>x.id===environment.selectedRoute);
+  const routes=environment.routes.map(r=>
+    (r.id===selected?.id?'◆ ':'◇ ')+r.label+(r.ready?' ✓':' [待解鎖]')).join(' / ');
+  environmentStatus.textContent=(environment.powerOnline?'● 城市電力：正常':'● 全城停電：啟動發電機')+
+    '\n撤離路線：'+routes+
+    '\n'+(selected?'已選路線：'+selected.label:'完成任務後選擇撤離點，靠近按 F');
+}
 const aim=new AimController(AIM_WEAPONS.assault_rifle);
 let aimHeld=false;
 const missionOverlay=document.createElement('aside');
@@ -371,6 +395,8 @@ function renderHUD(){
 network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
   if(event.type==='campaignStart'){
+    objectivePhase='objectives';
+    updateEnvironment(event.environment??null);
     missionOverlay.style.display='none';
     battleExtras.update([],[]);
     get<HTMLElement>('feedback').textContent='';
@@ -383,9 +409,11 @@ network.onEvent=(event:ServerEvent)=>{
   }
   if(event.type==='mission'){
     missionOverlay.style.display='block';
+    objectivePhase=event.missionPhase==='extraction'?'extraction':'objectives';
+    if(event.environment)updateEnvironment(event.environment);
     missionOverlay.dataset.phase=event.missionPhase||'objectives';
     missionOverlay.textContent=event.missionPhase==='extraction'
-      ?(event.levelLabel||network.session.levelLabel)+'：撤離開放！全隊返回安全屋'
+      ?(event.levelLabel||network.session.levelLabel)+'：可選擇撤離點，靠近按 F 啟動並集合'
       :(event.levelLabel||network.session.levelLabel)+'｜擊殺感染者 '+(event.progress||0)+'/'+(event.goal||12);
     if(event.message)alertMessage(event.message);
     return;
@@ -400,7 +428,16 @@ network.onEvent=(event:ServerEvent)=>{
     shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);
     controller.controls.unlock();menuMode('over');
     get<HTMLElement>('last-wave').textContent=event.message||'任務結算';
-    missionOverlay.style.display='none';renderCampaignResult();return;
+    missionOverlay.style.display='none';updateEnvironment(null);renderCampaignResult();return;
+  }
+  if(event.type==='environmentState'){
+    if(event.environment)updateEnvironment(event.environment);
+    if(event.message)alertMessage(event.message);
+    return;
+  }
+  if(event.type==='environmentAction'){
+    if(event.message)alertMessage(event.message);
+    return;
   }
   if(event.type==='skillUsed'){if(event.by===network.session.selfId)alertMessage('職業技能已啟動');return;}
   if(event.type==='bossAppeared'||event.type==='randomEvent'||event.type==='actionResult'){
@@ -415,7 +452,7 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='room'){drawLobby();shop.update(self());return;}
   if(event.type==='disconnected'){
     combatUI.setActive(false);sound.setCriticalHeartbeat(false);
-    downed=false;shop.close(true);visible(get<HTMLElement>('intermission-banner'),false);controller.controls.unlock();menuMode('menu');alertMessage('與伺服器斷線，正在重新連線');return;
+    downed=false;shop.close(true);updateEnvironment(null);visible(get<HTMLElement>('intermission-banner'),false);controller.controls.unlock();menuMode('menu');alertMessage('與伺服器斷線，正在重新連線');return;
   }
   if(event.type==='wave'){
     shopRemainingUntil=0;lastShopDisplay=-1;
@@ -436,6 +473,7 @@ network.onEvent=(event:ServerEvent)=>{
   }
   if(event.type==='waveClear')return;
   if(event.type==='snapshot'){
+    if(event.environment)updateEnvironment(event.environment);
     if(network.session.phase==='intermission'){shopRemainingUntil=performance.now()+(event.shopRemainingMs??0);}
     crowd.receive(network.session.zombies);teammates.receive(network.session.players,network.session.selfId);
     battleExtras.update(event.defenses??[],event.loot??[]);
@@ -572,6 +610,8 @@ window.addEventListener('keydown',event=>{
   if(['KeyG','KeyH','KeyF','KeyT'].includes(event.code)&&!event.repeat&&network.session.phase==='playing'&&controller.controls.isLocked&&!downed&&!shop.isOpen){
     if(event.code==='KeyG'||event.code==='KeyH')network.send({type:'buildDefense',kind:event.code==='KeyG'?'turret':'barricade'});
     if(event.code==='KeyF'){
+      const near=blackoutWorld.getNearest(camera.position.x,controller.footY,camera.position.z,objectivePhase);
+      if(near){network.send({type:'interactWorld',id:near.id});return;}
       const item=battleExtras.nearestLoot(camera.position.x,controller.footY,camera.position.z);
       if(item)network.send({type:'collectLoot',id:item.id});
       else alertMessage('附近沒有可以搜刮的物資');
@@ -662,6 +702,14 @@ function frame(){
   }
   if(network.session.phase!=='playing'||!controller.controls.isLocked||downed||shop.isOpen)physicsClock.reset();
   const [dx,dy]=controller.consumeLook();weapon.update(dt,dx,dy,controller.moving);
+  blackoutWorld.render(dt);
+  const canUseWorld=network.session.phase==='playing'&&controller.controls.isLocked&&!downed&&!shop.isOpen;
+  const nearbyWorld=canUseWorld
+    ?blackoutWorld.getNearest(camera.position.x,controller.footY,camera.position.z,objectivePhase)
+    :null;
+  environmentPrompt.style.display=nearbyWorld?'block':'none';
+  if(nearbyWorld)environmentPrompt.textContent='F 操作：'+nearbyWorld.label+
+    (nearbyWorld.ready?'':'（需先解鎖）');
   combatUI.update(dt,controller.moving,controller.sprinting);
   world.updateShadowFocus(camera.position);
   crowd.render(dt,camera,adaptive.detailDistance,adaptive.visibleDistance);teammates.render(dt);
@@ -690,5 +738,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();visuals.dispose();post.dispose();assets.dispose();
+  sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
 });
