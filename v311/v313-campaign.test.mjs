@@ -47,13 +47,13 @@ test('train power/alert/launch are server-authoritative, staged, rate-limited, a
   assert.equal(use(state,player(54,-16),'metroTrain').ok,false,'power prerequisite');
   assert.equal(use(state,player(-32,-19),'metroPower',1700).action,'power_restored');
   assert.equal(use(state,player(-32,-19),'metroPower',1200).ok,false,'duplicate');
-  const alert=use(state,player(-10,-22),'metroAlarm',2000);
+  const alert=use(state,player(-10,-22),'metroAlarm',2400);
   assert.equal(alert.horde,18);
-  assert.equal(use(state,player(-10,-22),'metroAlarm',2200).ok,false,'cooldown');
-  const train=use(state,player(54,-16),'metroTrain',3000);
+  assert.equal(use(state,player(-10,-22),'metroAlarm',2600).ok,false,'cooldown');
+  const train=use(state,player(54,-16),'metroTrain',3200);
   assert.equal(train.action,'train_started');assert.equal(train.horde,24);
-  assert.equal(metroRouteReady(state,'train',27000),false);
-  assert.equal(metroRouteReady(state,'train',28000),true);
+  assert.equal(metroRouteReady(state,'train',28000),false);
+  assert.equal(metroRouteReady(state,'train',28200),true);
   assert.equal(use(state,player(0,0),'metroPower',35000).ok,false,'remote spoof');
   assert.equal(metroInteract(state,{player:player(54,-16),id:'metroTrain',now:36000,phase:'lobby'}).ok,false);
 });
