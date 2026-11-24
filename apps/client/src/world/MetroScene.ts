@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {METRO_BOXES} from '../../../../v313/MetroMap.mjs';
 
 const steel=(color:number,emissive=0)=>new THREE.MeshStandardMaterial({
-  color,emissive,emissiveIntensity:emissive?.35:0,roughness:.72,metalness:.2
+  color,emissive,emissiveIntensity:emissive?0.35:0,roughness:.72,metalness:.2
 });
 /** Entire metro environment lives in a separate root for inexpensive chapter switching. */
 export class MetroScene {
