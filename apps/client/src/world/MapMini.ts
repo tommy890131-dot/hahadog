@@ -1,5 +1,6 @@
 import mapData from '../../../../packages/shared/MapLayout.json';
 import { TACTICAL_IDS } from '../../../../packages/shared/VerticalCollision.mjs';
+import {METRO_BOXES} from '../../../../v313/MetroMap.mjs';
 import type {ZombieRecord,EnvironmentState} from '../network/Multiplayer';
 export class MapMini {
   private ctx:CanvasRenderingContext2D;
@@ -10,11 +11,12 @@ export class MapMini {
     const ctx=this.canvas.getContext('2d');if(!ctx)throw Error('Minimap canvas unavailable');
     this.ctx=ctx;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
-  draw(x:number,z:number,yaw:number,zombies:ZombieRecord[],environment?:EnvironmentState|null):void{
+  draw(x:number,z:number,yaw:number,zombies:ZombieRecord[],environment?:EnvironmentState|null,
+    mapId:'city'|'underground_metro'='city'):void{
     const ctx=this.ctx,s=this.size,h=mapData.halfSize,scale=s/(2*h),pt=(v:number)=>(v+h)*scale;
     ctx.clearRect(0,0,s,s);ctx.fillStyle='#0e1f28ef';ctx.fillRect(0,0,s,s);
     ctx.fillStyle='#384450';
-    for(const b of mapData.buildings){
+    for(const b of mapId==='underground_metro'?[]:mapData.buildings){
       if(b.role==='CAR')continue;
       ctx.fillStyle=TACTICAL_IDS.has(b.id)?'#236b65':'#384450';
       ctx.fillRect(pt(b.x-b.w/2),pt(b.z-b.d/2),b.w*scale,b.d*scale);
@@ -24,8 +26,21 @@ export class MapMini {
         ctx.fillRect(pt(b.x)-2,pt(b.z+b.d/2)-2,4,4);
       }
     }
+    if(mapId==='underground_metro'){
+      ctx.fillStyle='#24414c';ctx.fillRect(pt(-80),pt(-27),160*scale,54*scale);
+      for(const b of METRO_BOXES){
+        ctx.fillStyle=b.role==='train'?'#71858b':b.role==='column'?'#54656d':'#263239';
+        ctx.fillRect(pt(b.x-b.w/2),pt(b.z-b.d/2),b.w*scale,b.d*scale);
+      }
+      ctx.fillStyle='#d7b570';ctx.fillRect(pt(-78),pt(-7),156*scale,.6*scale);
+      ctx.fillRect(pt(-78),pt(7),156*scale,.6*scale);
+    }
     ctx.strokeStyle='#3fbbac';ctx.lineWidth=1.2;
-    ctx.beginPath();ctx.arc(pt(0),pt(0),mapData.safehouse.radius*scale,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(pt(mapId==='underground_metro'?-66:0),
+      pt(mapId==='underground_metro'?-15:0),
+      (mapId==='underground_metro'?10:mapData.safehouse.radius)*scale,0,Math.PI*2);
+    ctx.stroke();
     // Fixed-location powered consoles and randomized server-authorized exits.
     if(environment){
       ctx.lineWidth=1.7;
@@ -35,7 +50,8 @@ export class MapMini {
         ctx.fillStyle=chosen?'#ffe5a5':route.ready?'#b2fff0':'#ab8b7a';
         ctx.beginPath();ctx.arc(pt(route.x),pt(route.z),chosen?5:3.8,0,Math.PI*2);ctx.stroke();
         ctx.font='bold 9px sans-serif';
-        ctx.fillText(route.id==='van'?'車':route.id==='convoy'?'醫':'洞',pt(route.x)+5,pt(route.z)-5);
+        ctx.fillText(route.id==='train'?'列':route.id==='safehouse'?'安':
+          route.id==='van'?'車':route.id==='convoy'?'醫':'洞',pt(route.x)+5,pt(route.z)-5);
       }
       for(const device of environment.devices){
         if(!device.active)continue;
@@ -43,7 +59,8 @@ export class MapMini {
         ctx.fillStyle='#ffcd76';
         ctx.fillRect(x-2.5,y-2.5,5,5);
         ctx.font='bold 9px sans-serif';
-        ctx.fillText(device.id==='generator'?'電':device.id==='relay'?'訊':'警',x+5,y-4);
+        ctx.fillText(device.id==='generator'||device.id==='metroPower'?'電':
+          device.id==='relay'||device.id==='metroTrain'?'列':'警',x+5,y-4);
       }
       const selected=environment.routes.find(route=>route.id===environment.selectedRoute);
       if(selected){
