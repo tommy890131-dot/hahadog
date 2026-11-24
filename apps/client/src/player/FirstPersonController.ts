@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { PHYSICS, stepVertical } from '../../../../packages/shared/VerticalCollision.mjs';
+import {metroStepVertical} from '../../../../v313/MetroMap.mjs';
 import type { World } from '../world/World';
 
 /** Fixed-height first-person capsule, with grounded-only jump and shared 3-D collision. */
@@ -111,7 +112,9 @@ export class FirstPersonController {
       if(Math.abs(resolved.z-pos.z)<Math.abs(dz)*.12)this.velocityXZ.y=0;
       pos.x=resolved.x;pos.z=resolved.z;feet=resolved.feet;
     }
-    const vertical=stepVertical(feet,this.velocityY,this.isGrounded,pos.x,pos.z,step);
+    const vertical=this.world.chapter==='underground_metro'
+      ?metroStepVertical(feet,this.velocityY,this.isGrounded,pos.x,pos.z,step)
+      :stepVertical(feet,this.velocityY,this.isGrounded,pos.x,pos.z,step);
     this.velocityY=vertical.vy;
     this.isGrounded=vertical.grounded;
     pos.y=vertical.y+this.eyeHeight;
