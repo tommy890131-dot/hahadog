@@ -41,8 +41,8 @@ app.innerHTML=`
   <section id="lobby" class="hidden"><div class="eyebrow">SQUAD ASSEMBLY</div>
     <h2 id="code">-----</h2><div id="roster"></div>
     <button id="start-wave">隊長開始戰鬥</button><p class="hint">四位隊友使用同一網址，輸入房號即可合作。</p></section>
-  <section id="battle-entry" class="hidden"><h2>城市已遭感染</h2>
-    <button id="enter">進入末日城市 · 鎖定滑鼠</button><p class="hint">隨機停電 · 城市互動機關 · 每局兩條撤離路線。</p></section>
+  <section id="battle-entry" class="hidden"><h2 id="chapter-entry-title">感染區域作戰</h2>
+    <button id="enter">進入戰役地圖 · 鎖定滑鼠</button><p class="hint">雙地圖戰役 · 地鐵列車啟動 · 隧道屍潮 · 多路線撤離。</p></section>
   <section id="game-over" class="hidden" aria-label="關卡結算">
     <h2 id="result-title">任務結算</h2>
     <p id="last-wave"></p>
@@ -66,6 +66,7 @@ app.innerHTML=`
         <dt>戰鬥及裝備</dt><dd>左鍵開火、右鍵瞄準、狙擊槍開鏡時滾輪切換 4×／8×、R 換彈、1／2 換武器、V 推擊</dd>
         <dt>合作與職業</dt><dd>Q 職業技能、E 救援隊友、Tab 查看小隊完整戰績</dd>
         <dt>防禦與搜刮</dt><dd>G 部署機槍塔、H 部署路障、T 修理設施、F 操作機關／搜刮、B 開啟商店</dd>
+        <dt>V3.13 多地圖戰役</dt><dd>隊長可在房間選擇城市或地下捷運。地下捷運按 F 恢復電力、啟動列車或警報；觸發屍潮後可選擇列車／安全屋撤離。</dd>
         <dt>畫質及暫停</dt><dd>F8 畫質模式、Esc 解除滑鼠鎖定並顯示選單</dd>
       </dl>
     </details>
@@ -73,7 +74,7 @@ app.innerHTML=`
   <p id="notice" class="status"></p>
   <div id="asset-label" class="status"></div>
 </div></div>
-<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.12 · BLACKOUT / COOP</small></div>
+<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.13 · OUTBREAK / COOP</small></div>
   <div id="mission">WAVE 01</div><div id="squad"></div><div id="feedback">小隊整備中</div><div id="performance"></div></div>
 <div id="player-hud" class="hidden"><div class="currency"><span id="money">$600</span><span id="level">LV 1</span></div>
   <div class="stat-label">護甲 <span id="armor-value">0 / 100</span></div><div class="stat-track armor-track"><div id="armor-fill"></div></div>
@@ -479,6 +480,8 @@ network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
   if(event.type==='campaignStart'){
     world.setChapter(event.mapId==='underground_metro'?'underground_metro':'city');
+    get<HTMLElement>('chapter-entry-title').textContent=event.mapId==='underground_metro'
+      ?'地下捷運・斷線終點站':'失控城市・第一戰役';
     physicsClock.reset();moveReconciler.reset();
     const starts=event.mapId==='underground_metro'?[-69,-14]:[-3,-2];
     controller.teleport(starts[0],starts[1],0);
