@@ -30,8 +30,8 @@ import './style.css';
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <div id="overlay"><div class="panel">
-  <div class="eyebrow">DEADLINE FOUR · V3.12 · BLACKOUT PROTOCOL</div>
-  <h1>末日防線 <span>V3.12</span></h1>
+  <div class="eyebrow">DEADLINE FOUR · V3.13 · OUTBREAK CAMPAIGN</div>
+  <h1>末日防線 <span>V3.13</span></h1>
   <p class="desc">FOUR SURVIVORS · ONE LAST NIGHT</p>
   <div class="loading-track"><div id="loading-bar"></div></div>
   <div id="loading-text">初始化夜間城市…</div><p id="connection" class="status">伺服器連線中</p>
@@ -151,7 +151,7 @@ function updateEnvironment(environment:EnvironmentState|null):void{
   const selected=environment.routes.find(x=>x.id===environment.selectedRoute);
   const routes=environment.routes.map(r=>
     (r.id===selected?.id?'◆ ':'◇ ')+r.label+(r.ready?' ✓':' [待解鎖]')).join(' / ');
-  environmentStatus.textContent=(environment.powerOnline?'● 城市電力：正常':'● 全城停電：啟動發電機')+
+  environmentStatus.textContent=(environment.powerOnline?'● 電力：正常':'● 停電：啟動發電機')+
     '\n撤離路線：'+routes+
     '\n'+(selected?'已選路線：'+selected.label:'完成任務後選擇撤離點，靠近按 F');
 }
@@ -348,6 +348,18 @@ function updateAmmo(){
 let localKills=0,downed=false,lastHudSnapshot=0;
 let shopRemainingUntil=0,lastShopDisplay=-1;
 const network=new Multiplayer();
+const mapSelector=document.createElement('div');
+mapSelector.style.cssText='display:flex;gap:10px;align-items:center;justify-content:space-between;margin:10px 0;color:#c8f7ed';
+mapSelector.innerHTML='<label for="map-select">戰役地圖</label>'+
+  '<select id="map-select" style="color:#e9f8fb;background:#172930;border:1px solid #5b8687;border-radius:5px;padding:7px">'+
+  '<option value="city">01｜失控城市</option>'+
+  '<option value="underground_metro">02｜地下捷運・斷線終點站</option></select>';
+get<HTMLElement>('lobby').append(mapSelector);
+const mapSelect=get<HTMLSelectElement>('map-select');
+mapSelect.onchange=()=>{
+  if(network.session.hostId===network.session.selfId)
+    network.selectMap(mapSelect.value as 'city'|'underground_metro');
+};
 const physicsClock = new FixedPhysicsClock();
 const moveReconciler = new MoveReconciler();
 window.addEventListener('blur',()=>physicsClock.reset());
@@ -372,6 +384,8 @@ function drawLobby(){
   const own=p.find(entry=>entry.id===network.session.selfId);
   if(own)get<HTMLSelectElement>('v311-class').value=own.classId;
   const isHost=network.session.hostId===network.session.selfId;
+  mapSelect.disabled=!isHost;
+  mapSelect.value=network.session.mapId;
   visible(get<HTMLElement>('start-wave'),isHost);
   if(network.session.phase==='ended')renderCampaignResult();
 }
@@ -389,7 +403,7 @@ function renderCampaignResult():void{
   visible(get<HTMLElement>('campaign-waiting'),!isHost);
   get<HTMLElement>('result-title').textContent=won?'關卡通關成功！':'任務失敗';
   get<HTMLElement>('campaign-progress').textContent=won&&!completed
-    ?'下一關：'+(['失聯街區','廢棄醫院','工業封鎖區','最後防線'][session.levelIndex+1]||'下一階段')
+    ?'下一關：'+(['失聯街區','地下捷運・斷線終點站','工業封鎖區','最後防線'][session.levelIndex+1]||'下一階段')
     :completed?'四個關卡已完成！':session.levelLabel+' · 可重新挑戰';
 }
 function enterBattle(){
@@ -464,10 +478,15 @@ function renderHUD(){
 network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
   if(event.type==='campaignStart'){
+    world.setChapter(event.mapId==='underground_metro'?'underground_metro':'city');
+    physicsClock.reset();moveReconciler.reset();
+    const starts=event.mapId==='underground_metro'?[-69,-14]:[-3,-2];
+    controller.teleport(starts[0],starts[1],0);
     objectivePhase='objectives';
     endingMood=null;
     updateEnvironment(event.environment??null);
     soundtrack.say('missionStart',true);
+    if(event.mapId==='underground_metro')alertMessage('地下捷運已載入。先恢復月台電力，再啟動列車，注意隧道屍潮');
     sound.playSfx('objective',.60);
     missionOverlay.style.display='none';
     battleExtras.update([],[]);
@@ -516,6 +535,10 @@ network.onEvent=(event:ServerEvent)=>{
     if(event.action==='power_restored'){sound.playSfx('powerRestore',.65);soundtrack.say('powerRestored');}
     if(event.action==='relay_online'){sound.playSfx('relay',.65);soundtrack.say('relay');}
     if(event.action==='alarm'){sound.playSfx('alarm',.8);soundtrack.say('alarm',true);}
+    if(event.action==='train_started'){
+      sound.playSfx('alarm',.78);sound.playSfx('horde',.65);
+      soundtrack.say('wave',true);
+    }
     if(event.action==='route_selected'){
       sound.playSfx('extraction',.7);
       const route=event.environment?.selectedRoute;
@@ -879,7 +902,8 @@ function frame(){
   }
   if(now-lastMap>180&&network.session.phase==='playing'){
     lastMap=now;const dir=new THREE.Vector3();camera.getWorldDirection(dir);
-    minimap.draw(camera.position.x,camera.position.z,Math.atan2(dir.x,-dir.z),network.session.zombies,currentEnvironment);
+    minimap.draw(camera.position.x,camera.position.z,Math.atan2(dir.x,-dir.z),
+      network.session.zombies,currentEnvironment,network.session.mapId);
   }
   if(feedbackDeadline&&now>feedbackDeadline){get<HTMLElement>('feedback').textContent='生存 · 擊殺 · 成長 · 團隊合作';get<HTMLElement>('notice').textContent='';feedbackDeadline=0;}
 }
@@ -892,5 +916,5 @@ window.addEventListener('resize',()=>{
 window.addEventListener('pagehide',event=>{
   // A persisted page resumes from BFCache; keep its GPU/audio resources alive.
   if(event.persisted)return;
-  network.dispose();soundtrack.dispose();sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();visuals.dispose();post.dispose();assets.dispose();
+  network.dispose();soundtrack.dispose();sound.dispose();combatUI.dispose();impacts.dispose();tracers.dispose();battleExtras.dispose();teammates.dispose();blackoutWorld.dispose();world.disposeChapter();visuals.dispose();post.dispose();assets.dispose();
 });
