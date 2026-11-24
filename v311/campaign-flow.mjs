@@ -6,7 +6,7 @@ export const STAGE_RULES=Object.freeze([
   Object.freeze({goal:12,bossAt:8,bossHp:1550,extraEnemies:0,extractionMs:90000,
     objective:'清除感染者並修復撤離通訊'}),
   Object.freeze({goal:16,bossAt:10,bossHp:1900,extraEnemies:8,extractionMs:85000,
-    objective:'奪取醫療物資並消滅感染醫護巨獸'}),
+    objective:'恢復月台電力、啟動列車並抵擋隧道感染者'}),
   Object.freeze({goal:20,bossAt:12,bossHp:2400,extraEnemies:14,extractionMs:80000,
     objective:'守住工業設施並擊敗重甲異變體'}),
   Object.freeze({goal:24,bossAt:15,bossHp:3000,extraEnemies:20,extractionMs:75000,
