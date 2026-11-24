@@ -45,7 +45,7 @@ test('train power/alert/launch are server-authoritative, staged, rate-limited, a
   const state=createMetroEvents(3);
   assert.equal(metroRouteReady(state,'train',0),false);
   assert.equal(use(state,player(54,-16),'metroTrain').ok,false,'power prerequisite');
-  assert.equal(use(state,player(-32,-19),'metroPower',1100).action,'power_restored');
+  assert.equal(use(state,player(-32,-19),'metroPower',1700).action,'power_restored');
   assert.equal(use(state,player(-32,-19),'metroPower',1200).ok,false,'duplicate');
   const alert=use(state,player(-10,-22),'metroAlarm',2000);
   assert.equal(alert.horde,18);
