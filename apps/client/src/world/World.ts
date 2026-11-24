@@ -36,6 +36,9 @@ export class World {
   private currentChapter:'city'|'underground_metro'='city';
 
   constructor(scene:THREE.Scene){
+    // The perspective camera already belongs to the scene. Never hide the
+    // camera (or its attached first-person gun) when swapping map geometry.
+    const preexisting=new Set(scene.children);
     scene.background=new THREE.Color(0x0a121c);
     scene.fog=new THREE.FogExp2(0x0a121c,.012);
     scene.add(new THREE.HemisphereLight(0x58748d,0x191d20,.38));
@@ -144,7 +147,7 @@ export class World {
     addCityDetails(scene, layout.buildings);
     this.streetProps(scene);
     this.createSafehouse(scene);
-    this.cityObjects=scene.children.slice();
+    this.cityObjects=scene.children.filter(child=>!preexisting.has(child));
     this.cityBlockers=this.blockers.slice();
     this.metroScene=new MetroScene(scene);
   }
