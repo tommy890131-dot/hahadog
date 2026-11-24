@@ -4,6 +4,9 @@ import {createBlackoutProtocol,advanceBlackoutProtocol,triggerBlackout,interactW
   publicEnvironment,inSelectedExtractionZone,ROUTES} from './v312/BlackoutProtocol.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
+import {METRO_MAP,METRO_MAP_ID,metroCanOccupy,metroMoveHorizontal,metroStepVertical,
+  metroCollisionBoxes,metroFlowField,metroPursue,metroRouteDirection} from './v313/MetroMap.mjs';
+import {createMetroEvents,metroInteract,metroPublicEnvironment,metroExtractionZone} from './v313/MetroEvents.mjs';
 import {ROOM_IDLE_MS,SOCKET_PING_INTERVAL_MS,SOCKET_PONG_TIMEOUT_MS,
   pruneRoomRegistry,handshakeCapacity} from './v312/RoomCapacity.mjs';
 import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
@@ -81,14 +84,22 @@ const finite = n => typeof n === 'number' && Number.isFinite(n);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const distance2 = (a, b) => Math.hypot(a.x-b.x, a.z-b.z);
 const codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const safe = p => Math.hypot(p.x-MAP.safehouse.x,p.z-MAP.safehouse.z) <= MAP.safehouse.radius;
+const safe = p =>{
+  const base=p.mapId===METRO_MAP_ID?METRO_MAP.safehouse:MAP.safehouse;
+  return Math.hypot(p.x-base.x,p.z-base.z)<=base.radius;
+};
 // Same static 3-D walls/floors/roof as the browser. The server never trusts client Y.
 const collisionBoxes=VERTICAL_LAYOUT.boxes.filter(b=>b.solid).map(b=>({
   minX:b.x-b.w/2,maxX:b.x+b.w/2,
   minY:b.y-b.h/2,maxY:b.y+b.h/2,
   minZ:b.z-b.d/2,maxZ:b.z+b.d/2
 }));
-function canOccupy(x,z,r=.4){return canOccupyAt(x,z,0,r);}
+const metroBoxes=metroCollisionBoxes();
+const isMetro=room=>V311&&room?.mapId===METRO_MAP_ID;
+const roomBoxes=room=>isMetro(room)?metroBoxes:collisionBoxes;
+function canOccupy(x,z,r=.4,room=null){
+  return isMetro(room)?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
+}
 function makeCode(){for(let k=0;k<200;k++){
   const code=Array.from(crypto.randomBytes(5),b=>codeAlphabet[b%codeAlphabet.length]).join('');
   if(!rooms.has(code))return code;
@@ -110,7 +121,9 @@ function publicPlayer(p){const a=activeAmmo(p);return {id:p.id,name:p.name,x:p.x
   downed:p.downed,reloading:p.reloadUntil>Date.now(),inSafehouse:safe(p)};}
 function send(peer,msg){peer?.send(msg);}
 function announce(room,obj){for(const peer of room.players.keys())send(peer,obj);}
-function lobbyInfo(room){return {type:'room',code:room.code,hostId:room.hostId,phase:room.phase,wave:room.wave,players:[...room.players.values()].map(publicPlayer),levelIndex:room.levelIndex??0,result:room.lastResult??null};}
+function lobbyInfo(room){return {type:'room',code:room.code,hostId:room.hostId,
+  phase:room.phase,wave:room.wave,players:[...room.players.values()].map(publicPlayer),
+  levelIndex:room.levelIndex??0,mapId:room.mapId??'city',result:room.lastResult??null};}
 function syncLobby(room){announce(room,lobbyInfo(room));}
 function joinRoom(peer,code,name){
   if(peer.room){send(peer,{type:'error',message:'你已加入房間'});return;}
@@ -149,7 +162,9 @@ function snapshot(room,now){
     zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing,moving:z.moving===true,attacking:Date.now()-(z.lastAttackAt??0)<420})),
     defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
     bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0,
-    environment:V311&&room.protocol?publicEnvironment(room.protocol,now):undefined});
+    environment:V311&&room.protocol
+      ?isMetro(room)?metroPublicEnvironment(room.protocol,now):publicEnvironment(room.protocol,now):undefined,
+    mapId:room.mapId??'city'});
 }
 function startMatch(room,{preserveCampaign=false}={}){
   const freshRun=room.phase==='ended';
@@ -158,25 +173,31 @@ function startMatch(room,{preserveCampaign=false}={}){
   room.fields.clear();room.revive.clear();room.damageTimes=[];
   room.pressure=0;room.lastSnapshot=0;room.navCursor=0;room.lastDirectorAt=0;
   room.wave=0;room.phase='lobby';room.zombies=[];room.pending=0;
+  room.mapId=V311&&room.levelIndex===1?METRO_MAP_ID:'city';
   let i=0;for(const p of room.players.values()){
-    const starts=[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
+    const starts=isMetro(room)?METRO_MAP.starts:[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
     if(freshRun&&!preserveCampaign)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
       owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},weaponLevel:0,txn:new Map()});
-    Object.assign(p,{x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0,aiming:false,skillNextAt:0,skillUntil:0});
+    Object.assign(p,{mapId:room.mapId,x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0,aiming:false,skillNextAt:0,skillUntil:0});
     for(const id of Object.keys(p.inventory))p.inventory[id]=freshAmmo(id);
   }
   if(V311){
     const stage=stageAt(room.levelIndex??0);
     room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:stage.extractionMs});
     room.survival.extractionZone='multi_route';
-    room.protocol=createBlackoutProtocol({seed:Date.now()+Math.floor(Math.random()*1000000),now:Date.now()});
+    room.protocol=isMetro(room)
+      ?createMetroEvents(Date.now())
+      :createBlackoutProtocol({seed:Date.now()+Math.floor(Math.random()*1000000),now:Date.now()});
     room.missionKills=0;
     room.defenses=[];room.loot=[];room.bossSpawned=false;room.nextExtraEventAt=Date.now()+45000;room.nextItemId=1;
     for(const p of room.players.values())enterPlayer(room.survival,p.id);
     stepRound(room.survival,Date.now());
     announce(room,{type:'campaignStart',levelIndex:room.levelIndex,levelId:stage.id,
-      levelLabel:stage.label,goal:stage.goal,objective:stage.objective,
-      environment:publicEnvironment(room.protocol,Date.now())});
+      levelLabel:isMetro(room)?'地下捷運・斷線終點站':stage.label,
+      mapId:room.mapId,goal:stage.goal,objective:isMetro(room)
+        ?'恢復電力，啟動列車，擊退變異者並安全撤離':stage.objective,
+      environment:isMetro(room)?metroPublicEnvironment(room.protocol,Date.now())
+        :publicEnvironment(room.protocol,Date.now())});
     announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective,progress:0,missionPhase:'objectives'});
   }
   startWave(room);
@@ -204,8 +225,11 @@ function rewardKill(room,player,z,headshot){
       completeObjective(room.survival);
       room.protocol.objectiveComplete=true;
       stepRound(room.survival,Date.now());
-      announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:LEVELS[room.levelIndex].id,levelLabel:LEVELS[room.levelIndex].label,goal:stageAt(room.levelIndex).goal,progress:stageAt(room.levelIndex).goal,missionPhase:'extraction',
-        environment:publicEnvironment(room.protocol,Date.now()),
+      announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:LEVELS[room.levelIndex].id,
+        levelLabel:isMetro(room)?'地下捷運・斷線終點站':LEVELS[room.levelIndex].label,
+        goal:stageAt(room.levelIndex).goal,progress:stageAt(room.levelIndex).goal,missionPhase:'extraction',
+        environment:isMetro(room)?metroPublicEnvironment(room.protocol,Date.now())
+          :publicEnvironment(room.protocol,Date.now()),
         message:'任務完成！選擇地圖上兩條撤離路線之一，按 F 發出撤離信號後全隊集合'});
     }else announce(room,{type:'missionProgress',levelIndex:room.levelIndex,progress:Math.min(room.missionKills,stageAt(room.levelIndex).goal),goal:stageAt(room.levelIndex).goal});
   }
@@ -310,7 +334,7 @@ function shoot(room,p,now,shotId){
     y:from.y-.29+dir.y*1.05,
     z:from.z+Math.sin(yaw)*.38+dir.z*1.05
   };
-  for(const b of collisionBoxes)wallAt=Math.min(wallAt,rayBox(from,dir,b));
+  for(const b of roomBoxes(room))wallAt=Math.min(wallAt,rayBox(from,dir,b));
   const hits=[];
   for(const z of room.zombies){
     const head=raySphere(from,dir,{x:z.x,y:z.y+(z.kind==='boss'?3:z.kind==='brute'||z.kind==='juggernaut'?1.85:1.55),z:z.z},
@@ -339,7 +363,7 @@ function shoot(room,p,now,shotId){
   if(visualDistance>.001){
     const heading={x:offset.x/visualDistance,y:offset.y/visualDistance,z:offset.z/visualDistance};
     let wallDistance=visualDistance;
-    for(const box of collisionBoxes)wallDistance=Math.min(wallDistance,rayBox(visualFrom,heading,box));
+    for(const box of roomBoxes(room))wallDistance=Math.min(wallDistance,rayBox(visualFrom,heading,box));
     if(Number.isFinite(wallDistance)&&wallDistance<visualDistance-.05)
       visualTo={x:visualFrom.x+heading.x*Math.max(0,wallDistance-.03),
         y:visualFrom.y+heading.y*Math.max(0,wallDistance-.03),
@@ -351,9 +375,10 @@ function shoot(room,p,now,shotId){
 function spawnZombie(room){
   let pos=null;
   for(let attempt=0;attempt<45;attempt++){
-    const base=MAP.spawns[Math.floor(rnd(0,MAP.spawns.length))];
+    const spawnPoints=isMetro(room)?METRO_MAP.spawns:MAP.spawns;
+    const base=spawnPoints[Math.floor(rnd(0,spawnPoints.length))];
     const x=base.x+rnd(-8,8),z=base.z+rnd(-8,8);
-    if(canOccupy(x,z,.65)&&[...room.players.values()].every(p=>distance2(p,{x,z})>24)){pos={x,z};break;}
+    if(canOccupy(x,z,.65,room)&&[...room.players.values()].every(p=>distance2(p,{x,z})>16)){pos={x,z};break;}
   }
   if(!pos)return;
   const n=Math.random(),brute=n<Math.min(.025+room.wave*.009,.11),runner=!brute&&n<.22;
@@ -409,7 +434,7 @@ try {
 }
 function scheduleNavigation(now) {
   if (navWorkerBusy) return;
-  const candidates = [...rooms.values()].filter(room => room.phase === 'playing' && room.zombies.length);
+  const candidates = [...rooms.values()].filter(room => !isMetro(room) && room.phase === 'playing' && room.zombies.length);
   if (!candidates.length) return;
   const start = (navRoomCursor++ % candidates.length);
   for (let i = 0; i < candidates.length; i++) {
@@ -439,6 +464,17 @@ function scheduleNavigation(now) {
 }
 
 function chooseTarget(room,z,living){
+  if(isMetro(room)){
+    let target=null,score=Infinity;
+    for(const p of living){
+      const field=room.fields.get(p.id);
+      const v=metroRouteDirection(z,p,field);
+      if(Math.hypot(v.dx,v.dz)<.001&&distance2(z,p)>2.5)continue;
+      const dist=distance2(z,p);
+      if(dist<score){score=dist;target=p;}
+    }
+    return target;
+  }
   const cell=navigation.closest(z.x,z.z,z.y);
   let chosen=null,best=Infinity;
   for(const p of living){
@@ -465,10 +501,11 @@ function clearZombieSight(z,p){
   const d=Math.hypot(dx,dy,dz);
   if(d<.001)return true;
   const dir={x:dx/d,y:dy/d,z:dz/d};
-  return !collisionBoxes.some(b=>rayBox(ax,dir,b)<d-.35);
+  return !roomBoxes(z.room||p.room).some(b=>rayBox(ax,dir,b)<d-.35);
 }
 function pursue(room,z,target,dt,now,nearby){
   const field=room.fields.get(target.id);
+  if(isMetro(room)){metroPursue(z,target,field,dt);return;}
   if(!field&&!directPursuitPossible(z,target))return;
   advanceZombie(z,target,field,nearby,dt,now,z.knockX,z.knockZ);
   z.knockX*=.77;z.knockZ*=.77;
@@ -487,7 +524,7 @@ function onMessage(peer,msg){
     }
     const code=makeCode();if(!code)return;
     const room={code,players:new Map(),hostId:peer.id,phase:'lobby',wave:0,zombies:[],pending:0,levelIndex:0,lastResult:null,
-      createdAt:now,lastActivityAt:now,
+      createdAt:now,lastActivityAt:now,mapId:'city',
       nextSpawnAt:0,nextWaveAt:0,lastSnapshot:0,damageTimes:[],lastDirectorAt:0,
       navCursor:0,pressure:0,directorPhase:'buildup',relaxUntil:0,navUpdateAt:0,fields:new Map(),revive:new Map()};
     rooms.set(code,room);joinRoom(peer,code,msg.name);return;
@@ -503,6 +540,12 @@ function onMessage(peer,msg){
     if(peer.id===room.hostId&&room.phase==='playing'&&['won','lost'].includes(msg.result))finishCampaign(room,msg.result);
     return;
   }
+  if(V311&&msg.type==='selectMap'&&room.phase==='lobby'){
+    if(peer.id!==room.hostId){send(peer,{type:'error',message:'只有隊長能選擇地圖'});return;}
+    if(msg.mapId!=='city'&&msg.mapId!==METRO_MAP_ID)return;
+    room.levelIndex=msg.mapId===METRO_MAP_ID?1:0;room.mapId=msg.mapId;
+    syncLobby(room);return;
+  }
   if(V311&&['retryLevel','nextLevel','restartCampaign'].includes(msg.type)){
     const action=msg.type;
     if(!allowedCampaignAction({phase:room.phase,result:room.lastResult,index:room.levelIndex,action,isHost:peer.id===room.hostId})){
@@ -516,19 +559,26 @@ function onMessage(peer,msg){
     p.classId=msg.classId;syncLobby(room);return;
   }
   if(V311&&msg.type==='interactWorld'){
-    const outcome=interactWithWorld(room.protocol,{
-      player:p,id:msg.id,now,phase:room.phase,downed:p.downed
-    });
+    const outcome=isMetro(room)
+      ?metroInteract(room.protocol,{player:p,id:msg.id,now,phase:room.phase,downed:p.downed})
+      :interactWithWorld(room.protocol,{player:p,id:msg.id,now,phase:room.phase,downed:p.downed});
     send(peer,{type:'environmentAction',ok:outcome.ok,message:outcome.message,action:outcome.action});
     if(outcome.ok){
-      if(outcome.action==='alarm'){
+      if(isMetro(room)&&outcome.horde){
+        room.pending=Math.min(135,room.pending+outcome.horde);
+        room.nextSpawnAt=Math.min(room.nextSpawnAt,now+300);
+        announce(room,{type:'randomEvent',event:'horde',
+          message:'地鐵站隧道傳來異響！'+outcome.horde+'名感染者增援！'});
+      }
+      if(outcome.action==='alarm'&&!isMetro(room)){
         room.pending=Math.min(135,room.pending+8);
         if(room.loot.length<10){
           const item={id:room.nextItemId++,x:-24,y:0,z:0,rarity:'rare',claimed:false};
           room.loot.push(item);announce(room,{type:'lootSpawn',item});
         }
       }
-      announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
+      announce(room,{type:'environmentState',environment:isMetro(room)
+        ?metroPublicEnvironment(room.protocol,now):publicEnvironment(room.protocol,now),
         message:outcome.message,by:p.id,action:outcome.action});
     }
     return;
@@ -549,7 +599,7 @@ function onMessage(peer,msg){
     const kind=msg.kind;
     const position={x:p.x+Math.sin(p.yaw)*2.6,y:p.y,z:p.z-Math.cos(p.yaw)*2.6};
     const validation=validPlacement({player:p,position,existing:room.defenses,kind,credits:p.money,
-      solidAt:pos=>!canOccupyAt(pos.x,pos.z,pos.y,.65)});
+      solidAt:pos=>!canOccupy(pos.x,pos.z,.65,room)});
     if(!validation.ok){send(peer,{type:'actionResult',message:'無法建造：'+validation.reason});return;}
     p.money-=validation.cost;
     const d={id:room.nextItemId++,kind,x:position.x,y:position.y,z:position.z,hp:DEFENSES[kind].hp,maxHp:DEFENSES[kind].hp,nextShotAt:0};
@@ -583,7 +633,8 @@ function onMessage(peer,msg){
       p.moveCredit=Math.min(maxSpeed*.17,(p.moveCredit||0)+maxSpeed*clamp(elapsed/1000,0,.17));
       const dx=msg.x-p.x,dz=msg.z-p.z,requested=Math.hypot(dx,dz);
       if(requested<=p.moveCredit+1e-6){
-        const moved=moveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded);
+        const moved=isMetro(room)?metroMoveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded):
+          moveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded);
         p.moveCredit=Math.max(0,p.moveCredit-Math.hypot(moved.x-p.x,moved.z-p.z));
         p.x=moved.x;p.z=moved.z;
         if(p.grounded)p.y=moved.feet;
@@ -617,7 +668,7 @@ function onMessage(peer,msg){
       const dx=z.x-p.x,dz=z.z-p.z,dist=Math.hypot(dx,dz);
       if(dist<.001||dist>2||Math.abs(z.y-p.y)>1.25||(dx*fx+dz*fz)/dist<Math.cos(Math.PI/6))continue;
       const from={x:p.x,y:p.y+1.15,z:p.z},dir={x:dx/dist,y:0,z:dz/dist};
-      if(collisionBoxes.some(b=>rayBox(from,dir,b)<dist))continue;
+      if(roomBoxes(room).some(b=>rayBox(from,dir,b)<dist))continue;
       z.knockX+=(dx/dist)*7;z.knockZ+=(dz/dist)*7;z.hp-=10;hits++;
       if(z.hp<=0)rewardKill(room,p,z,false);
     }
@@ -665,6 +716,7 @@ function finishCampaign(room,result){
   room.phase='ended';room.lastResult=won?'won':'lost';
   room.pending=0;room.zombies=[];room.damageTimes=[];room.fields.clear();room.revive.clear();
   announce(room,{type:'missionEnd',success:won,result:room.lastResult,levelIndex:room.levelIndex,
+    mapId:room.mapId,
     levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
     routeId:won?room.protocol?.selectedRoute:null,
     message:won&&room.protocol?.selectedRoute
@@ -681,7 +733,7 @@ function tick(){
     }
     if(room.phase!=='playing')continue;
     if(V311&&room.survival){
-      const environmentChange=advanceBlackoutProtocol(room.protocol,now);
+      const environmentChange=isMetro(room)?null:advanceBlackoutProtocol(room.protocol,now);
       if(environmentChange){
         const label=environmentChange==='blackout'?'全城突然停電！前往備用發電機修復':'城市備用電源自動恢復';
         announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
@@ -689,7 +741,8 @@ function tick(){
       }
       for(const p of room.players.values())
         setPlayerState(room.survival,p.id,{
-          alive:!p.downed&&p.hp>0,inZone:inSelectedExtractionZone(room.protocol,p)
+          alive:!p.downed&&p.hp>0,inZone:isMetro(room)
+            ?metroExtractionZone(room.protocol,p,now):inSelectedExtractionZone(room.protocol,p)
         });
       const result=stepRound(room.survival,now);
       if(result==='won'||result==='lost'){
@@ -700,7 +753,8 @@ function tick(){
     for(const p of players){
       applyReload(p,now);
       if(!p.downed){
-        const result=stepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000);
+        const result=isMetro(room)?metroStepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000):
+          stepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000);
         p.y=result.y;p.vy=result.vy;p.grounded=result.grounded;
       }
     }
@@ -709,7 +763,7 @@ function tick(){
     }
     if(V311&&room.survival){
       if(!room.bossSpawned&&room.missionKills>=stageAt(room.levelIndex).bossAt&&room.zombies.length<Math.min(MAX_ZOMBIES,24)){
-        const source=MAP.spawns.find(point=>[...room.players.values()].every(p=>distance2(point,p)>16));
+        const source=(isMetro(room)?METRO_MAP.spawns:MAP.spawns).find(point=>[...room.players.values()].every(p=>distance2(point,p)>16));
         if(source){
           const z={id:nextZombieId++,x:source.x,y:0,vy:0,grounded:true,z:source.z,kind:'boss',hp:stageAt(room.levelIndex).bossHp,maxHp:stageAt(room.levelIndex).bossHp,
             speed:SPECIALS.boss.speed,attackAt:0,abilityAt:0,step:0,facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false,bossPhase:1};
@@ -732,7 +786,7 @@ function tick(){
         room.nextExtraEventAt=now+45000;
         const event=nextEvent(Math.floor(Math.random()*100),room.pressure/100);
         if(event==='horde')room.pending=Math.min(135,room.pending+12);
-        if(event==='blackout'&&triggerBlackout(room.protocol,now)){
+        if(event==='blackout'&&!isMetro(room)&&triggerBlackout(room.protocol,now)){
           announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
             action:'blackout',message:'隨機停電！城市照明中斷，使用 F 啟動備用發電機'});
         }
@@ -744,6 +798,10 @@ function tick(){
         }
         announce(room,{type:'randomEvent',event,message:{horde:'新一波屍潮逼近',blackout:'全城停電！',supply_drop:'空投補給已抵達',fog:'濃霧來襲',radio_signal:'收到神秘求救信號'}[event]});
       }
+    }
+    if(isMetro(room)&&now-(room.lastMetroFlowAt||0)>1200){
+      room.lastMetroFlowAt=now;
+      for(const p of living)room.fields.set(p.id,metroFlowField(p));
     }
     const zombieBuckets=buildZombieBuckets(room.zombies);
     for(const z of room.zombies){
