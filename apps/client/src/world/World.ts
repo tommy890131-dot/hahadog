@@ -167,7 +167,6 @@ export class World {
   }
   get chapter():string{return this.currentChapter;}
   disposeChapter():void{this.metroScene.dispose();}
-  }
 
   /** Procedural shell, walkable upstairs floor, external switchback ramps and rooftop. */
   private createTacticalBuilding(scene:THREE.Scene,b:Building):void{
