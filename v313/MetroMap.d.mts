@@ -1,0 +1,13 @@
+export type MetroBox={id:string;x:number;y:number;z:number;w:number;h:number;d:number;solid:boolean;role:'wall'|'column'|'train'|'gate'|'equipment'};
+export type MetroPos={x:number;z:number;y?:number};
+export type MetroPhysics={x:number;z:number;feet:number};
+export const METRO_MAP_ID:'underground_metro';
+export const METRO_MAP:Readonly<{id:'underground_metro';title:string;halfSize:number;safehouse:{x:number;z:number;radius:number};starts:readonly (readonly [number,number])[];spawns:readonly MetroPos[]}>;
+export const METRO_BOXES:readonly MetroBox[];
+export function metroCanOccupy(x:number,z:number,feet?:number,radius?:number,height?:number):boolean;
+export function metroMoveHorizontal(x:number,z:number,feet:number,dx:number,dz:number,grounded:boolean,radius?:number):MetroPhysics;
+export function metroStepVertical(y:number,vy:number,grounded:boolean,x:number,z:number,dt:number):{y:number;vy:number;grounded:boolean};
+export function metroCollisionBoxes():{minX:number;maxX:number;minY:number;maxY:number;minZ:number;maxZ:number}[];
+export function metroFlowField(target:MetroPos):{dist:Int32Array;next:Int32Array;targetX:number;targetZ:number};
+export function metroRouteDirection(zombie:MetroPos,player:MetroPos,field:ReturnType<typeof metroFlowField>):{dx:number;dz:number};
+export function metroPursue(zombie:Record<string,number|boolean>,player:MetroPos,field:ReturnType<typeof metroFlowField>,dt:number):void;
