@@ -6,7 +6,8 @@ import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
 import {METRO_MAP,METRO_MAP_ID,metroCanOccupy,metroMoveHorizontal,metroStepVertical,
   metroCollisionBoxes,metroFlowField,metroPursue,metroRouteDirection} from './v313/MetroMap.mjs';
-import {createMetroEvents,metroInteract,metroPublicEnvironment,metroExtractionZone} from './v313/MetroEvents.mjs';
+import {createMetroEvents,metroInteract,metroPublicEnvironment,
+  metroExtractionZone,METRO_EXITS} from './v313/MetroEvents.mjs';
 import {ROOM_IDLE_MS,SOCKET_PING_INTERVAL_MS,SOCKET_PONG_TIMEOUT_MS,
   pruneRoomRegistry,handshakeCapacity} from './v312/RoomCapacity.mjs';
 import {stageAt,allowedCampaignAction,nextStageIndex,LAST_LEVEL} from './v311/campaign-flow.mjs';
@@ -489,19 +490,19 @@ function chooseTarget(room,z,living){
   let nearest=null,nearestDistance=Infinity;
   for(const p of living){
     const dist=distance2(z,p);
-    if(dist<nearestDistance&&directPursuitPossible(z,p,10)&&clearZombieSight(z,p)){
+    if(dist<nearestDistance&&directPursuitPossible(z,p,10)&&clearZombieSight(z,p,room)){
       nearest=p;nearestDistance=dist;
     }
   }
   return nearest;
 }
-function clearZombieSight(z,p){
+function clearZombieSight(z,p,room){
   const ax={x:z.x,y:z.y+1.2,z:z.z};
   const dx=p.x-z.x,dy=(p.y+1.0)-ax.y,dz=p.z-z.z;
   const d=Math.hypot(dx,dy,dz);
   if(d<.001)return true;
   const dir={x:dx/d,y:dy/d,z:dz/d};
-  return !roomBoxes(z.room||p.room).some(b=>rayBox(ax,dir,b)<d-.35);
+  return !roomBoxes(room).some(b=>rayBox(ax,dir,b)<d-.35);
 }
 function pursue(room,z,target,dt,now,nearby){
   const field=room.fields.get(target.id);
@@ -720,7 +721,9 @@ function finishCampaign(room,result){
     levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
     routeId:won?room.protocol?.selectedRoute:null,
     message:won&&room.protocol?.selectedRoute
-      ?'小隊成功由「'+ROUTES[room.protocol.selectedRoute].label+'」撤離！'
+      ?'小隊成功由「'+(isMetro(room)
+        ?METRO_EXITS[room.protocol.selectedRoute]?.label
+        :ROUTES[room.protocol.selectedRoute]?.label)+'」撤離！'
       :won?'小隊成功撤離！':'撤離任務失敗'});
   syncLobby(room);
 }
@@ -772,7 +775,7 @@ function tick(){
       }
       for(const d of room.defenses){
         if(d.kind!=='turret')continue;
-        const z=room.zombies.find(z=>canTurretShoot(d,z,now)&&clearZombieSight({x:d.x,y:d.y,z:d.z},z));
+        const z=room.zombies.find(z=>canTurretShoot(d,z,now)&&clearZombieSight({x:d.x,y:d.y,z:d.z},z,room));
         if(!z)continue;
         d.nextShotAt=now+DEFENSES.turret.intervalMs;
         z.hp-=DEFENSES.turret.damage;
@@ -824,14 +827,14 @@ function tick(){
         }
       }
       const xzDist=distance2(z,target),heightDiff=Math.abs(z.y-target.y);
-      const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target);
+      const canAttack=xzDist<1.35 && heightDiff<1.15 && clearZombieSight(z,target,room);
       if(!canAttack)pursue(room,z,target,TICK_MS/1000,now,zombieBuckets.near(z));
       else if(now>z.attackAt){z.attackAt=now+1100;z.lastAttackAt=now;
         hurt(room,target,SPECIALS[z.kind]?.damage??(z.kind==='brute'?22:z.kind==='runner'?14:10));}
       if(V311&&(z.kind==='spitter'||z.kind==='screamer'||z.kind==='boss')&&now>=z.abilityAt){
         const spec=SPECIALS[z.kind];z.abilityAt=now+spec.intervalMs;
         if(z.kind==='screamer')room.pending=Math.min(135,room.pending+4);
-        if(z.kind==='spitter'&&xzDist<14&&heightDiff<3&&clearZombieSight(z,target))hurt(room,target,spec.damage);
+        if(z.kind==='spitter'&&xzDist<14&&heightDiff<3&&clearZombieSight(z,target,room))hurt(room,target,spec.damage);
         if(z.kind==='boss'&&xzDist<8&&heightDiff<2&&clearZombieSight(z,target))hurt(room,target,spec.damage);
         announce(room,{type:'specialAttack',kind:z.kind,id:z.id});
       }
