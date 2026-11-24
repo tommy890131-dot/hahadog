@@ -959,7 +959,7 @@ const server=http.createServer((req,res)=>{
   catch{res.writeHead(400);res.end();return;}
   if(url.pathname==='/health'){
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',contentVersion:V311?'3.12':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,
+    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',contentVersion:V311?'3.13':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,
       rooms:rooms.size,connections:peers.size,activePlayers:[...rooms.values()].reduce((n,room)=>n+room.players.size,0),
       maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS,
       websocketHeartbeatMs:SOCKET_PING_INTERVAL_MS,roomIdleLobbyMs:ROOM_IDLE_MS.lobby}));return;
