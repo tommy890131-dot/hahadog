@@ -10,7 +10,7 @@ export const CLASSES = Object.freeze({
 });
 export const LEVELS = Object.freeze([
   {id:"lost_district",label:"失聯街區",objectives:["supply_1","supply_2","supply_3","radio_repair"], extraction:"roof", boss:null},
-  {id:"abandoned_hospital",label:"廢棄醫院",objectives:["backup_power","vaccine_sample"],extraction:"ambulance_bay",boss:"infected_medic"},
+  {id:"abandoned_hospital",label:"地下捷運・斷線終點站",objectives:["restore_platform_power","activate_train","repel_horde"],extraction:"armored_train",boss:"tunnel_mutant"},
   {id:"industrial_lockdown",label:"工業封鎖區",objectives:["generator_repair","fortify_factory"],extraction:"loading_dock",boss:"armored_brute"},
   {id:"last_stand",label:"最後防線",objectives:["enter_bunker","recover_code","defeat_boss"],extraction:"helipad",boss:"alpha_mutant"},
 ]);
