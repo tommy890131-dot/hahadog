@@ -39,5 +39,5 @@ test('remote player muzzle originates at forward barrel-offset, not at player ey
   assert.match(server,/x:from\.x\+Math\.cos\(yaw\)\*\.38\+dir\.x\*1\.05/);
   assert.match(server,/y:from\.y-\.29\+dir\.y\*1\.05/);
   assert.match(server,/z:from\.z\+Math\.sin\(yaw\)\*\.38\+dir\.z\*1\.05/);
-  assert.match(server,/for\(const box of collisionBoxes\)wallDistance=Math\.min\(wallDistance,rayBox\(visualFrom,heading,box\)\)/);
+  assert.match(server,/for\(const box of roomBoxes\(room\)\)wallDistance=Math\.min\(wallDistance,rayBox\(visualFrom,heading,box\)\)/);
 });
