@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import mapData from '../../../../packages/shared/MapLayout.json';
 import { surfaceMaterial, facadeMaterial } from './SurfaceMaterials';
 import { addCityDetails } from './CityDetails';
+import {MetroScene} from './MetroScene';
+import {metroCanOccupy,metroMoveHorizontal} from '../../../../v313/MetroMap.mjs';
 import { TACTICAL_IDS, VERTICAL_LAYOUT, canOccupyAt, moveHorizontal, surfaceHeightAt } from '../../../../packages/shared/VerticalCollision.mjs';
 
 type Building = {id:string;x:number;z:number;w:number;d:number;h:number;role:string};
@@ -28,6 +30,10 @@ export class World {
   private readonly shadowRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),this.shadowBack).normalize();
   private readonly shadowUp = new THREE.Vector3().crossVectors(this.shadowBack,this.shadowRight).normalize();
   private readonly shadowCenter = new THREE.Vector3();
+  private metroScene!:MetroScene;
+  private cityObjects:THREE.Object3D[]=[];
+  private cityBlockers:THREE.Object3D[]=[];
+  private currentChapter:'city'|'underground_metro'='city';
 
   constructor(scene:THREE.Scene){
     scene.background=new THREE.Color(0x0a121c);
@@ -138,6 +144,29 @@ export class World {
     addCityDetails(scene, layout.buildings);
     this.streetProps(scene);
     this.createSafehouse(scene);
+    this.cityObjects=scene.children.slice();
+    this.cityBlockers=this.blockers.slice();
+    this.metroScene=new MetroScene(scene);
+  }
+  setChapter(id:'city'|'underground_metro'):void{
+    if(this.currentChapter===id)return;
+    this.currentChapter=id;
+    const metro=id==='underground_metro';
+    for(const obj of this.cityObjects)obj.visible=!metro;
+    this.metroScene.setVisible(metro);
+    this.blockers.splice(0,this.blockers.length,...(metro?this.metroScene.blockers:this.cityBlockers));
+    this.ground.visible=!metro;
+    this.lastShadowX=Number.NaN;
+    this.sceneBackground(metro);
+  }
+  private sceneBackground(metro:boolean):void{
+    const scene=this.metroScene.group.parent;
+    if(!(scene instanceof THREE.Scene))return;
+    scene.background=new THREE.Color(metro?0x030709:0x0a121c);
+    scene.fog=new THREE.FogExp2(metro?0x030709:0x0a121c,metro?.018:.012);
+  }
+  get chapter():string{return this.currentChapter;}
+  disposeChapter():void{this.metroScene.dispose();}
   }
 
   /** Procedural shell, walkable upstairs floor, external switchback ramps and rooftop. */
@@ -309,6 +338,7 @@ export class World {
    * shadow rendering enabled so moving zombies continue to cast shadows.
    */
   updateShadowFocus(player: THREE.Vector3): void {
+    if(this.currentChapter==='underground_metro')return;
     const camera = this.moonLight.shadow.camera;
     const texel = (camera.right-camera.left)/this.moonLight.shadow.mapSize.x;
     const u = Math.round(player.dot(this.shadowRight)/texel)*texel;
@@ -327,15 +357,15 @@ export class World {
   }
 
   canOccupy(x:number,z:number,r=.36):boolean{
-    return canOccupyAt(x,z,0,r);
+    return this.currentChapter==='underground_metro'?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
   }
   canOccupy3D(x:number,z:number,feet:number,r=.36):boolean{
-    return canOccupyAt(x,z,feet,r);
+    return this.currentChapter==='underground_metro'?metroCanOccupy(x,z,feet,r):canOccupyAt(x,z,feet,r);
   }
   supportHeight(x:number,z:number,feet:number):number|null{
-    return surfaceHeightAt(x,z,feet);
+    return this.currentChapter==='underground_metro'?0:surfaceHeightAt(x,z,feet);
   }
   movePlayer(x:number,z:number,feet:number,dx:number,dz:number,grounded:boolean){
-    return moveHorizontal(x,z,feet,dx,dz,grounded);
+    return this.currentChapter==='underground_metro'?metroMoveHorizontal(x,z,feet,dx,dz,grounded):moveHorizontal(x,z,feet,dx,dz,grounded);
   }
 }
