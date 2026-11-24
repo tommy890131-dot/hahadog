@@ -14,7 +14,7 @@ export type EnvironmentState={
 export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
 export type LootRecord = {id:number;x:number;y:number;z:number;rarity:'common'|'uncommon'|'rare'|'legendary'};
 export type ServerEvent = {
-  type:string; id?:string; selfId?:string; code?:string; hostId?:string;
+  type:string; id?:string; selfId?:string; code?:string; hostId?:string; mapId?:'city'|'underground_metro';
   phase?:string; players?:PlayerRecord[]; zombies?:ZombieRecord[];
   remaining?:number; wave?:number; remainingMs?:number; shopRemainingMs?:number; nextWave?:number; by?:string; target?:string;
   from?:{x:number;y:number;z:number}; to?:{x:number;y:number;z:number};
@@ -29,8 +29,8 @@ export type ServerEvent = {
 };
 export class Multiplayer {
   ws:WebSocket|null=null;
-  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number;levelIndex:number;levelLabel:string;result:'won'|'lost'|null} = {
-    selfId:'',code:'',hostId:'',phase:'menu',players:[],zombies:[],wave:0,remaining:0,shopRemainingMs:0,levelIndex:0,levelLabel:'失聯街區',result:null
+  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number;levelIndex:number;levelLabel:string;mapId:'city'|'underground_metro';result:'won'|'lost'|null} = {
+    selfId:'',code:'',hostId:'',phase:'menu',players:[],zombies:[],wave:0,remaining:0,shopRemainingMs:0,levelIndex:0,levelLabel:'失聯街區',mapId:'city',result:null
   };
   onEvent:(event:ServerEvent)=>void=()=>{};
   onStatus:(status:string)=>void=()=>{};
@@ -60,12 +60,14 @@ export class Multiplayer {
           this.session.hostId=msg.hostId||'';
           this.session.players=msg.players||[];
           this.session.phase='lobby';
+          if(msg.mapId)this.session.mapId=msg.mapId;
         }
         if(msg.type==='room') {
           this.session.hostId=msg.hostId||'';
           this.session.players=msg.players||[];
           if(msg.phase) this.session.phase=msg.phase;
           if(typeof msg.levelIndex==='number')this.session.levelIndex=msg.levelIndex;
+          if(msg.mapId)this.session.mapId=msg.mapId;
           if(msg.result!==undefined)this.session.result=msg.result;
         }
         if(msg.type==='intermission'){
@@ -74,6 +76,7 @@ export class Multiplayer {
         }
         if(msg.type==='campaignStart'){
           this.session.levelIndex=msg.levelIndex??0;
+          if(msg.mapId)this.session.mapId=msg.mapId;
           this.session.levelLabel=msg.levelLabel||'失聯街區';
           this.session.result=null;
           this.session.zombies=[];
@@ -94,6 +97,7 @@ export class Multiplayer {
           this.session.phase=msg.phase||this.session.phase;
           this.session.remaining=msg.remaining??0;
           this.session.shopRemainingMs=msg.shopRemainingMs??0;
+          if(msg.mapId)this.session.mapId=msg.mapId;
           this.session.players=msg.players||[];
           this.session.zombies=msg.zombies||[];
         }
@@ -118,6 +122,7 @@ export class Multiplayer {
   create(name:string){this.send({type:'create',name});}
   join(code:string,name:string){this.send({type:'join',code,name});}
   start(){this.send({type:'start'});}
+  selectMap(mapId:'city'|'underground_metro'){this.send({type:'selectMap',mapId});}
   retryLevel(){this.send({type:'retryLevel'});}
   nextLevel(){this.send({type:'nextLevel'});}
   restartCampaign(){this.send({type:'restartCampaign'});}
