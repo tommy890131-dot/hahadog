@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type {EnvironmentState, EvacRoute} from '../network/Multiplayer';
+import {METRO_DEVICES,METRO_EXITS} from '../../../../v313/MetroEvents.mjs';
 
 type Marker={group:THREE.Group;light:THREE.Mesh;ring:THREE.Mesh;label:string};
 type Nearby={id:string;label:string;distance:number;ready:boolean};
@@ -53,6 +54,7 @@ export class BlackoutWorldVisuals {
       {id:'relay',label:'地下通訊繼電器',x:0,y:0,z:24},
       {id:'alarm',label:'誘餌警報器',x:-24,y:0,z:0},
       ...ALL_ROUTES,
+      ...Object.values(METRO_DEVICES),...Object.values(METRO_EXITS),
     ];
     for(const p of list){
       const group=new THREE.Group();
@@ -81,6 +83,7 @@ export class BlackoutWorldVisuals {
       const route=environment.routes.find(x=>x.id===id);
       const device=environment.devices.find(x=>x.id===id);
       marker.group.visible=activeIds.has(id)&&(!route||!environment.selectedRoute||environment.selectedRoute===id);
+      if(route||device)marker.group.position.set((route??device)!.x,(route??device)!.y,(route??device)!.z);
       const active=route?(environment.selectedRoute===id||route.ready):device?.active??false;
       const color=active?this.colors.online:this.colors.disabled;
       (marker.light.material as THREE.MeshStandardMaterial).color.copy(color);
@@ -113,10 +116,12 @@ export class BlackoutWorldVisuals {
     for(const {object,intensity} of this.ambient)object.intensity=intensity*(1-this.blackout*.45);
     for(const {material,intensity} of this.emissive)
       material.emissiveIntensity=intensity*(1-this.blackout*.92);
-    if(this.background&&this.scene.background instanceof THREE.Color)
-      this.scene.background.copy(this.background).lerp(new THREE.Color(0x03070d),this.blackout*.74);
-    if(this.scene.fog instanceof THREE.FogExp2&&this.background)
-      this.scene.fog.color.copy(this.background).lerp(new THREE.Color(0x03070d),this.blackout*.65);
+    const metro=this.state?.devices.some(device=>device.id==='metroPower')??false;
+    const baseline=new THREE.Color(metro?0x030709:0x0a121c);
+    if(this.scene.background instanceof THREE.Color)
+      this.scene.background.copy(baseline).lerp(new THREE.Color(0x010304),this.blackout*.74);
+    if(this.scene.fog instanceof THREE.FogExp2)
+      this.scene.fog.color.copy(baseline).lerp(new THREE.Color(0x010304),this.blackout*.65);
     for(const marker of this.markers.values()){
       if(!marker.group.visible)continue;
       marker.ring.rotation.z=this.elapsed*.28;
