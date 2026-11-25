@@ -1,0 +1,26 @@
+name: V3.12 Metro integration smoke test
+on:
+  push:
+    branches: [feature/v3-12-metro-detail]
+  workflow_dispatch:
+jobs:
+  inspect-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Unpack original game
+        run: node bootstrap.mjs
+      - name: Inspect actual client scene layout
+        run: |
+          echo '=== Candidate game scene sources ==='
+          find apps/client/src -type f \( -iname '*world*' -o -iname '*scene*' -o -iname '*metro*' -o -iname '*map*' -o -name 'main.ts' \) | head -80
+          echo '=== Three.js scene creation and map switches ==='
+          grep -RnE 'new (THREE\.)?Scene\(|metro|subway|station|levelType|mapId|createWorld' apps/client/src --include='*.ts' | head -85 || true
+          echo '=== Metro source module retained after unpack ==='
+          test -s apps/client/src/world/MetroStationDetail.ts
+      - name: Build game and run unit tests
+        run: bash scripts/render-build.sh
