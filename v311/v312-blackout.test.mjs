@@ -98,7 +98,7 @@ test('client renders live blackout, supplies F interactions and draws alternate 
   assert.match(server,/if\(V311&&msg\.type==='interactWorld'\)/);
   assert.match(server,/inSelectedExtractionZone\(room\.protocol,p\)/);
   assert.match(server,/advanceBlackoutProtocol\(room\.protocol,now\)/);
-  assert.match(server,/environment:V311&&room\.protocol[\s\S]{0,130}publicEnvironment\(room\.protocol,now\)/);
+  assert.match(server,/environment:V311&&room\.protocol\?publicRoomEnvironment\(room,now\)/);
   assert.match(main,/if\(near\)\{network\.send\(\{type:'interactWorld',id:near\.id\}\);return;\}/);
   assert.match(main,/blackoutWorld\.render\(dt\)/);
   assert.match(visual,/object\.intensity=intensity\*\(1-this\.blackout\*\.98\)/);
