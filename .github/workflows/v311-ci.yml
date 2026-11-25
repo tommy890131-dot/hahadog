@@ -71,7 +71,7 @@ jobs:
             echo '~~~'
             echo "## Gameplay rules (tail)"
             echo '~~~'
-            grep -A 24 -B 2 '^not ok' v311-rules.log 2>/dev/null || true
+            awk '/^not ok / { print; showing=1; next } /^# Subtest:/ { showing=0 } showing && /failureType:|error:|actual:|expected:|location:/ {print}' v311-rules.log 2>/dev/null || true
             tail -n 15 v311-rules.log 2>/dev/null || true
             echo '~~~'
             echo "## Regression test output (tail)"
