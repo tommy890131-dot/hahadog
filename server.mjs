@@ -4,6 +4,12 @@ import {createBlackoutProtocol,advanceBlackoutProtocol,triggerBlackout,interactW
   publicEnvironment,inSelectedExtractionZone,ROUTES} from './v312/BlackoutProtocol.mjs';
 import {CLASSES,LEVELS} from './v311/gameplay-catalog.mjs';
 import {classShotModifiers,validClass} from './v311/ClassCombatRules.mjs';
+import {getFacility,isFacility,facilityCanOccupy,facilityMoveHorizontal,
+  facilityStepVertical,facilityCollisionBoxes,facilityFlowField,
+  facilityRouteDirection,facilityPursue} from './v314/FacilityMaps.mjs';
+import {createFacilityEvents,facilityInteract,facilityPublicEnvironment,
+  facilityExtractionZone} from './v314/FacilityEvents.mjs';
+import {createMapDirector,queueMapHorde,advanceMapDirector,nextMapSpawn} from './v314/MapDirector.mjs';
 import {METRO_MAP,METRO_MAP_ID,metroCanOccupy,metroMoveHorizontal,metroStepVertical,
   metroCollisionBoxes,metroFlowField,metroPursue,metroRouteDirection} from './v313/MetroMap.mjs';
 import {createMetroEvents,metroInteract,metroPublicEnvironment,
@@ -86,7 +92,8 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const distance2 = (a, b) => Math.hypot(a.x-b.x, a.z-b.z);
 const codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const safe = p =>{
-  const base=p.mapId===METRO_MAP_ID?METRO_MAP.safehouse:MAP.safehouse;
+  const base=isFacility(p.mapId)?getFacility(p.mapId).safehouse:
+    p.mapId===METRO_MAP_ID?METRO_MAP.safehouse:MAP.safehouse;
   return Math.hypot(p.x-base.x,p.z-base.z)<=base.radius;
 };
 // Same static 3-D walls/floors/roof as the browser. The server never trusts client Y.
@@ -96,10 +103,34 @@ const collisionBoxes=VERTICAL_LAYOUT.boxes.filter(b=>b.solid).map(b=>({
   minZ:b.z-b.d/2,maxZ:b.z+b.d/2
 }));
 const metroBoxes=metroCollisionBoxes();
+const hospitalBoxes=facilityCollisionBoxes('infected_hospital');
+const harborBoxes=facilityCollisionBoxes('doomed_harbor');
 const isMetro=room=>V311&&room?.mapId===METRO_MAP_ID;
-const roomBoxes=room=>isMetro(room)?metroBoxes:collisionBoxes;
+const isFacilityRoom=room=>V311&&isFacility(room?.mapId);
+const isFlatMap=room=>isMetro(room)||isFacilityRoom(room);
+const mapDataForRoom=room=>isFacilityRoom(room)?getFacility(room.mapId):
+  isMetro(room)?METRO_MAP:MAP;
+const roomBoxes=room=>isFacilityRoom(room)?
+  (room.mapId==='infected_hospital'?hospitalBoxes:harborBoxes):
+  isMetro(room)?metroBoxes:collisionBoxes;
 function canOccupy(x,z,r=.4,room=null){
-  return isMetro(room)?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
+  return isFacilityRoom(room)?facilityCanOccupy(room.mapId,x,z,0,r):
+    isMetro(room)?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
+}
+function moveRoomPlayer(room,x,z,y,dx,dz,grounded){
+  return isFacilityRoom(room)?facilityMoveHorizontal(room.mapId,x,z,y,dx,dz,grounded):
+    isMetro(room)?metroMoveHorizontal(x,z,y,dx,dz,grounded):
+      moveHorizontal(x,z,y,dx,dz,grounded);
+}
+function verticalRoomPlayer(room,y,vy,grounded,x,z,dt){
+  return isFacilityRoom(room)?facilityStepVertical(y,vy,grounded,x,z,dt):
+    isMetro(room)?metroStepVertical(y,vy,grounded,x,z,dt):
+      stepVertical(y,vy,grounded,x,z,dt);
+}
+function publicRoomEnvironment(room,now){
+  return isFacilityRoom(room)?facilityPublicEnvironment(room.protocol,now):
+    isMetro(room)?metroPublicEnvironment(room.protocol,now):
+      publicEnvironment(room.protocol,now);
 }
 function makeCode(){for(let k=0;k<200;k++){
   const code=Array.from(crypto.randomBytes(5),b=>codeAlphabet[b%codeAlphabet.length]).join('');
@@ -163,8 +194,7 @@ function snapshot(room,now){
     zombies:room.zombies.map(z=>({id:z.id,x:z.x,y:z.y,z:z.z,hp:z.hp,maxHp:z.maxHp??z.hp,kind:z.kind,step:z.step,facing:z.facing,moving:z.moving===true,attacking:Date.now()-(z.lastAttackAt??0)<420})),
     defenses:V311?room.defenses??[]:[],loot:V311?room.loot??[]:[],
     bossPhase:V311?(room.zombies.find(z=>z.kind==='boss')?.bossPhase??0):0,
-    environment:V311&&room.protocol
-      ?isMetro(room)?metroPublicEnvironment(room.protocol,now):publicEnvironment(room.protocol,now):undefined,
+    environment:V311&&room.protocol?publicRoomEnvironment(room,now):undefined,
     mapId:room.mapId??'city'});
 }
 function startMatch(room,{preserveCampaign=false}={}){
@@ -174,9 +204,9 @@ function startMatch(room,{preserveCampaign=false}={}){
   room.fields.clear();room.revive.clear();room.damageTimes=[];
   room.pressure=0;room.lastSnapshot=0;room.navCursor=0;room.lastDirectorAt=0;
   room.wave=0;room.phase='lobby';room.zombies=[];room.pending=0;
-  room.mapId=V311&&room.levelIndex===1?METRO_MAP_ID:'city';
+  room.mapId=V311?(['city',METRO_MAP_ID,'infected_hospital','doomed_harbor'][room.levelIndex]??'city'):'city';
   let i=0;for(const p of room.players.values()){
-    const starts=isMetro(room)?METRO_MAP.starts:[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
+    const starts=isFlatMap(room)?mapDataForRoom(room).starts:[[-3,-2],[3,-2],[-3,3],[3,3]],s=starts[i++];
     if(freshRun&&!preserveCampaign)Object.assign(p,{maxHp:100,armor:0,level:1,xp:0,money:600,kills:0,
       owned:['p9'],primary:null,secondary:'p9',weaponId:'p9',inventory:{p9:freshAmmo('p9')},weaponLevel:0,txn:new Map()});
     Object.assign(p,{mapId:room.mapId,x:s[0],z:s[1],y:0,vy:0,grounded:true,lastJump:0,hp:p.maxHp,downed:false,reloadUntil:0,lastShot:0,nextShotAt:0,lastMove:Date.now(),lastMoveSeq:0,moveCredit:.35,lastShove:0,navGoal:-1,navAt:0,aiming:false,skillNextAt:0,skillUntil:0});
@@ -186,19 +216,22 @@ function startMatch(room,{preserveCampaign=false}={}){
     const stage=stageAt(room.levelIndex??0);
     room.survival=createRound({seed:Date.now(),now:Date.now(),prepMs:0,extractionMs:stage.extractionMs});
     room.survival.extractionZone='multi_route';
-    room.protocol=isMetro(room)
-      ?createMetroEvents(Date.now())
+    room.protocol=isFacilityRoom(room)
+      ?createFacilityEvents(room.mapId,Date.now(),Date.now())
+      :isMetro(room)?createMetroEvents(Date.now())
       :createBlackoutProtocol({seed:Date.now()+Math.floor(Math.random()*1000000),now:Date.now()});
+    room.mapDirector=createMapDirector(room.mapId,Date.now(),Date.now());
     room.missionKills=0;
     room.defenses=[];room.loot=[];room.bossSpawned=false;room.nextExtraEventAt=Date.now()+45000;room.nextItemId=1;
     for(const p of room.players.values())enterPlayer(room.survival,p.id);
     stepRound(room.survival,Date.now());
     announce(room,{type:'campaignStart',levelIndex:room.levelIndex,levelId:stage.id,
-      levelLabel:isMetro(room)?'地下捷運・斷線終點站':stage.label,
-      mapId:room.mapId,goal:stage.goal,objective:isMetro(room)
-        ?'恢復電力，啟動列車，擊退變異者並安全撤離':stage.objective,
-      environment:isMetro(room)?metroPublicEnvironment(room.protocol,Date.now())
-        :publicEnvironment(room.protocol,Date.now())});
+      levelLabel:isFlatMap(room)?mapDataForRoom(room).label??mapDataForRoom(room).title:stage.label,
+      mapId:room.mapId,goal:stage.goal,objective:isFacilityRoom(room)?(room.mapId==='infected_hospital'
+          ?'恢復醫院供電、解除隔離門、抵擋病房屍潮並撤離'
+          :'啟動港口配電、貨櫃起重機與救援通訊，防守直到撤離'):
+        isMetro(room)?'恢復電力，啟動列車，擊退變異者並安全撤離':stage.objective,
+      environment:publicRoomEnvironment(room,Date.now())});
     announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:stage.id,levelLabel:stage.label,goal:stage.goal,objective:stage.objective,progress:0,missionPhase:'objectives'});
   }
   startWave(room);
@@ -227,10 +260,9 @@ function rewardKill(room,player,z,headshot){
       room.protocol.objectiveComplete=true;
       stepRound(room.survival,Date.now());
       announce(room,{type:'mission',mission:room.survival.mission,levelIndex:room.levelIndex,levelId:LEVELS[room.levelIndex].id,
-        levelLabel:isMetro(room)?'地下捷運・斷線終點站':LEVELS[room.levelIndex].label,
+        levelLabel:isFlatMap(room)?mapDataForRoom(room).label??mapDataForRoom(room).title:LEVELS[room.levelIndex].label,
         goal:stageAt(room.levelIndex).goal,progress:stageAt(room.levelIndex).goal,missionPhase:'extraction',
-        environment:isMetro(room)?metroPublicEnvironment(room.protocol,Date.now())
-          :publicEnvironment(room.protocol,Date.now()),
+        environment:publicRoomEnvironment(room,Date.now()),
         message:'任務完成！選擇地圖上兩條撤離路線之一，按 F 發出撤離信號後全隊集合'});
     }else announce(room,{type:'missionProgress',levelIndex:room.levelIndex,progress:Math.min(room.missionKills,stageAt(room.levelIndex).goal),goal:stageAt(room.levelIndex).goal});
   }
@@ -373,17 +405,19 @@ function shoot(room,p,now,shotId){
   announce(room,{type:'shot',by:p.id,shotId:scopedShotId,weaponId:p.weaponId,
     from,to,visualFrom,visualTo,hit,killed,headshot,enemyId:hits[0]?.z.id??null});
 }
-function spawnZombie(room){
+function spawnZombie(room,directorSpawn=null){
   let pos=null;
   for(let attempt=0;attempt<45;attempt++){
-    const spawnPoints=isMetro(room)?METRO_MAP.spawns:MAP.spawns;
-    const base=spawnPoints[Math.floor(rnd(0,spawnPoints.length))];
-    const x=base.x+rnd(-8,8),z=base.z+rnd(-8,8);
+    const spawnPoints=mapDataForRoom(room).spawns;
+    const base=directorSpawn??spawnPoints[Math.floor(rnd(0,spawnPoints.length))];
+    const spread=directorSpawn?1.25:isFlatMap(room)?3.0:8;
+    const x=base.x+rnd(-spread,spread),z=base.z+rnd(-spread,spread);
     if(canOccupy(x,z,.65,room)&&[...room.players.values()].every(p=>distance2(p,{x,z})>16)){pos={x,z};break;}
   }
   if(!pos)return;
   const n=Math.random(),brute=n<Math.min(.025+room.wave*.009,.11),runner=!brute&&n<.22;
-  const kind=V311&&Math.random()<.27?chooseSpecial(Math.floor(Math.random()*100),room.wave):brute?'brute':runner?'runner':'walker';
+  const kind=directorSpawn?.kind??(V311&&Math.random()<.27?
+    chooseSpecial(Math.floor(Math.random()*100),room.wave):brute?'brute':runner?'runner':'walker');
   const special=SPECIALS[kind];
   const hp=special?.hp??(brute?180:runner?65:90);
   room.zombies.push({id:nextZombieId++,x:pos.x,y:0,vy:0,grounded:true,z:pos.z,kind,hp,maxHp:hp,
@@ -435,7 +469,7 @@ try {
 }
 function scheduleNavigation(now) {
   if (navWorkerBusy) return;
-  const candidates = [...rooms.values()].filter(room => !isMetro(room) && room.phase === 'playing' && room.zombies.length);
+  const candidates = [...rooms.values()].filter(room => !isFlatMap(room) && room.phase === 'playing' && room.zombies.length);
   if (!candidates.length) return;
   const start = (navRoomCursor++ % candidates.length);
   for (let i = 0; i < candidates.length; i++) {
@@ -465,11 +499,12 @@ function scheduleNavigation(now) {
 }
 
 function chooseTarget(room,z,living){
-  if(isMetro(room)){
+  if(isFlatMap(room)){
     let target=null,score=Infinity;
     for(const p of living){
       const field=room.fields.get(p.id);
-      const v=metroRouteDirection(z,p,field);
+      const v=isFacilityRoom(room)?facilityRouteDirection(room.mapId,z,p,field):
+        metroRouteDirection(z,p,field);
       if(Math.hypot(v.dx,v.dz)<.001&&distance2(z,p)>2.5)continue;
       const dist=distance2(z,p);
       if(dist<score){score=dist;target=p;}
@@ -506,6 +541,7 @@ function clearZombieSight(z,p,room){
 }
 function pursue(room,z,target,dt,now,nearby){
   const field=room.fields.get(target.id);
+  if(isFacilityRoom(room)){facilityPursue(room.mapId,z,target,field,dt);return;}
   if(isMetro(room)){metroPursue(z,target,field,dt);return;}
   if(!field&&!directPursuitPossible(z,target))return;
   advanceZombie(z,target,field,nearby,dt,now,z.knockX,z.knockZ);
