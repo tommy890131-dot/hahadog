@@ -1,6 +1,6 @@
 # V3.11 CI report
-Source commit: 48a750da1454886ffd01855a9d2523b532252fe8
-Rules: success
+Source commit: 50eaed2b219e58de3f99240b265e560fb1933007
+Rules: failure
 TypeScript/Vite: failure
 Existing game regression: success
 
@@ -25,33 +25,39 @@ npm error command sh -c tsc --noEmit && vite build
 ~~~
 ## Gameplay rules (tail)
 ~~~
+not ok 71 - AAA-style environment modeling uses GPU-instanced parts instead of thousands of individual meshes
+  location: '/home/runner/work/hahadog/hahadog/v311/v314-environment-art.test.mjs:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+  expected:
+  actual: |-
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
-ok 88 - both crowd and rig renderers respect identical server facing without 180-degree offsets
+ok 94 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.521614
+  duration_ms: 0.339265
   type: 'test'
   ...
-1..88
-# tests 88
+1..94
+# tests 94
 # suites 0
-# pass 88
-# fail 0
+# pass 93
+# fail 1
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4781.532291
+# duration_ms 4483.468656
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.356486
+  duration_ms: 0.304984
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.732458
+  duration_ms: 0.5441
   type: 'test'
   ...
 1..65
@@ -62,5 +68,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6588.8648
+# duration_ms 5851.457123
 ~~~
