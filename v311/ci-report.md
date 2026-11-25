@@ -1,6 +1,6 @@
 # V3.11 CI report
-Source commit: 18d9baa0c5b92fc9d466a65d71178c3dfb3c1682
-Rules: failure
+Source commit: 818197c510d3b793f8ec67b568b3536a1974fd58
+Rules: success
 TypeScript/Vite: success
 Existing game regression: success
 
@@ -27,43 +27,37 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.66s[39m
+[32m✓ built in 1.54s[39m
 ~~~
 ## Gameplay rules (tail)
 ~~~
-not ok 63 - two maps share multiplayer room protocol but render distinct scenes and level transitions
-  location: '/home/runner/work/hahadog/hahadog/v311/v313-campaign.test.mjs:74:1'
-  failureType: 'testCodeFailure'
-  error: |-
-  expected:
-  actual: |-
 # Subtest: both crowd and rig renderers respect identical server facing without 180-degree offsets
 ok 83 - both crowd and rig renderers respect identical server facing without 180-degree offsets
   ---
-  duration_ms: 0.347543
+  duration_ms: 0.328052
   type: 'test'
   ...
 1..83
 # tests 83
 # suites 0
-# pass 82
-# fail 1
+# pass 83
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4537.695139
+# duration_ms 4442.446528
 ~~~
 ## Regression test output (tail)
 ~~~
 ok 64 - spatial hash creates local separation, but zombies on other floors do not repel
   ---
-  duration_ms: 0.270031
+  duration_ms: 0.287481
   type: 'test'
   ...
 # Subtest: server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
 ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; client interpolates y
   ---
-  duration_ms: 0.596804
+  duration_ms: 0.49263
   type: 'test'
   ...
 1..65
@@ -74,5 +68,5 @@ ok 65 - server includes zombie y in authoritative hitboxes, chase and snapshot; 
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6085.805148
+# duration_ms 5801.806678
 ~~~
