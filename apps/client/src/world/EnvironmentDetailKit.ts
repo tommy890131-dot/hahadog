@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {METRO_BOXES} from '../../../../v313/MetroMap.mjs';
 import {FACILITY_MAPS} from '../../../../v314/FacilityMaps.mjs';
+import {architecturalPbr} from './ArchitecturalPBR';
+import {refineMetroArchitecture,refineHospitalArchitecture,refineHarborArchitecture} from './ArchitectureRefinement';
 
 type FinishStats={parts:number;drawCalls:number;signs:number};
 type Piece={position:THREE.Vector3;scale:THREE.Vector3;rotation:THREE.Quaternion};
@@ -51,9 +53,17 @@ export class EnvironmentDetailKit {
  private material(name:MaterialName):THREE.MeshStandardMaterial{
    const existing=this.materials.get(name);if(existing)return existing;
    const [color,roughness,metalness,emissive]=PALETTE[name];
-   const mat=new THREE.MeshStandardMaterial({color,roughness,metalness,
+   const textured=['concrete','medical','porcelain','paint','anodized','galvanized',
+     'oxide','enamel','containerBlue','containerRed','containerGreen'].includes(name);
+   const maps=textured?architecturalPbr(name,color,roughness):null;
+   if(maps)this.textures.push(maps.map,maps.normalMap,maps.roughnessMap);
+   const mat=new THREE.MeshStandardMaterial({
+     color:maps?0xffffff:color,map:maps?.map??null,
+     normalMap:maps?.normalMap??null,roughnessMap:maps?.roughnessMap??null,
+     roughness,metalness,normalScale:new THREE.Vector2(.52,.52),
      emissive:emissive??0,emissiveIntensity:emissive?.65:0,
-     flatShading:false,side:THREE.FrontSide});
+     flatShading:false,side:THREE.FrontSide
+   });
    this.materials.set(name,mat);return mat;
  }
  private shape(type:Shape):THREE.BufferGeometry{
@@ -278,6 +288,7 @@ export function detailMetro(root:THREE.Group):EnvironmentDetailKit{
      kit.box('blueGlow',x,5.23,z,5.2,.05,.20);
    }
  }
+ refineMetroArchitecture(kit);
  return kit;
 }
 
@@ -386,6 +397,7 @@ export function detailHospital(root:THREE.Group):EnvironmentDetailKit{
      kit.box('blueGlow',x,5.09,z,3.5,.035,.20);
    }
  }
+ refineHospitalArchitecture(kit);
  return kit;
 }
 
@@ -486,5 +498,6 @@ export function detailHarbor(root:THREE.Group):EnvironmentDetailKit{
  kit.sign('貨櫃場  CONTAINER YARD',0,3.75,-76.82,11.6,1.10,0,'#c5aa6d');
  kit.sign('危險區  KEEP CLEAR',0,3.75,76.83,9.2,.92,Math.PI,'#c5aa6d');
  kit.sign('港口救援  RESCUE',64,3.4,43.5,6,.85,Math.PI,'#9edaca');
+ refineHarborArchitecture(kit);
  return kit;
 }
