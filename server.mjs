@@ -579,8 +579,9 @@ function onMessage(peer,msg){
   }
   if(V311&&msg.type==='selectMap'&&room.phase==='lobby'){
     if(peer.id!==room.hostId){send(peer,{type:'error',message:'只有隊長能選擇地圖'});return;}
-    if(msg.mapId!=='city'&&msg.mapId!==METRO_MAP_ID)return;
-    room.levelIndex=msg.mapId===METRO_MAP_ID?1:0;room.mapId=msg.mapId;
+    const choices=['city',METRO_MAP_ID,'infected_hospital','doomed_harbor'];
+    if(typeof msg.mapId!=='string'||!choices.includes(msg.mapId))return;
+    room.levelIndex=choices.indexOf(msg.mapId);room.mapId=msg.mapId;
     syncLobby(room);return;
   }
   if(V311&&['retryLevel','nextLevel','restartCampaign'].includes(msg.type)){
@@ -596,26 +597,27 @@ function onMessage(peer,msg){
     p.classId=msg.classId;syncLobby(room);return;
   }
   if(V311&&msg.type==='interactWorld'){
-    const outcome=isMetro(room)
-      ?metroInteract(room.protocol,{player:p,id:msg.id,now,phase:room.phase,downed:p.downed})
-      :interactWithWorld(room.protocol,{player:p,id:msg.id,now,phase:room.phase,downed:p.downed});
+    const input={player:p,id:msg.id,now,phase:room.phase,downed:p.downed};
+    const outcome=isFacilityRoom(room)?facilityInteract(room.protocol,input):
+      isMetro(room)?metroInteract(room.protocol,input):
+      interactWithWorld(room.protocol,input);
     send(peer,{type:'environmentAction',ok:outcome.ok,message:outcome.message,action:outcome.action});
     if(outcome.ok){
-      if(isMetro(room)&&outcome.horde){
-        room.pending=Math.min(135,room.pending+outcome.horde);
-        room.nextSpawnAt=Math.min(room.nextSpawnAt,now+300);
-        announce(room,{type:'randomEvent',event:'horde',
-          message:'地鐵站隧道傳來異響！'+outcome.horde+'名感染者增援！'});
+      if(isFlatMap(room)&&outcome.horde){
+        const group=queueMapHorde(room.mapDirector,{count:outcome.horde,
+          gate:outcome.gate??null,now,cause:'environment',pressure:room.pressure});
+        if(group)announce(room,{type:'hordeWarning',mapId:room.mapId,
+          gate:group.gate,label:group.label,count:group.total,
+          message:outcome.message});
       }
-      if(outcome.action==='alarm'&&!isMetro(room)){
+      if(outcome.action==='alarm'&&!isFlatMap(room)){
         room.pending=Math.min(135,room.pending+8);
         if(room.loot.length<10){
           const item={id:room.nextItemId++,x:-24,y:0,z:0,rarity:'rare',claimed:false};
           room.loot.push(item);announce(room,{type:'lootSpawn',item});
         }
       }
-      announce(room,{type:'environmentState',environment:isMetro(room)
-        ?metroPublicEnvironment(room.protocol,now):publicEnvironment(room.protocol,now),
+      announce(room,{type:'environmentState',environment:publicRoomEnvironment(room,now),
         message:outcome.message,by:p.id,action:outcome.action});
     }
     return;
@@ -670,8 +672,7 @@ function onMessage(peer,msg){
       p.moveCredit=Math.min(maxSpeed*.17,(p.moveCredit||0)+maxSpeed*clamp(elapsed/1000,0,.17));
       const dx=msg.x-p.x,dz=msg.z-p.z,requested=Math.hypot(dx,dz);
       if(requested<=p.moveCredit+1e-6){
-        const moved=isMetro(room)?metroMoveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded):
-          moveHorizontal(p.x,p.z,p.y,dx,dz,p.grounded);
+        const moved=moveRoomPlayer(room,p.x,p.z,p.y,dx,dz,p.grounded);
         p.moveCredit=Math.max(0,p.moveCredit-Math.hypot(moved.x-p.x,moved.z-p.z));
         p.x=moved.x;p.z=moved.z;
         if(p.grounded)p.y=moved.feet;
@@ -754,7 +755,8 @@ function finishCampaign(room,result){
   room.pending=0;room.zombies=[];room.damageTimes=[];room.fields.clear();room.revive.clear();
   announce(room,{type:'missionEnd',success:won,result:room.lastResult,levelIndex:room.levelIndex,
     mapId:room.mapId,
-    levelLabel:LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
+    levelLabel:isFlatMap(room)?mapDataForRoom(room).label??mapDataForRoom(room).title:
+      LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
     routeId:won?room.protocol?.selectedRoute:null,
     message:won&&room.protocol?.selectedRoute
       ?'小隊成功由「'+(isMetro(room)
@@ -772,7 +774,7 @@ function tick(){
     }
     if(room.phase!=='playing')continue;
     if(V311&&room.survival){
-      const environmentChange=isMetro(room)?null:advanceBlackoutProtocol(room.protocol,now);
+      const environmentChange=isFlatMap(room)?null:advanceBlackoutProtocol(room.protocol,now);
       if(environmentChange){
         const label=environmentChange==='blackout'?'全城突然停電！前往備用發電機修復':'城市備用電源自動恢復';
         announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
@@ -780,8 +782,10 @@ function tick(){
       }
       for(const p of room.players.values())
         setPlayerState(room.survival,p.id,{
-          alive:!p.downed&&p.hp>0,inZone:isMetro(room)
-            ?metroExtractionZone(room.protocol,p,now):inSelectedExtractionZone(room.protocol,p)
+          alive:!p.downed&&p.hp>0,inZone:isFacilityRoom(room)?
+            facilityExtractionZone(room.protocol,p):
+            isMetro(room)?metroExtractionZone(room.protocol,p,now):
+            inSelectedExtractionZone(room.protocol,p)
         });
       const result=stepRound(room.survival,now);
       if(result==='won'||result==='lost'){
@@ -792,8 +796,7 @@ function tick(){
     for(const p of players){
       applyReload(p,now);
       if(!p.downed){
-        const result=isMetro(room)?metroStepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000):
-          stepVertical(p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000);
+        const result=verticalRoomPlayer(room,p.y,p.vy,p.grounded,p.x,p.z,TICK_MS/1000);
         p.y=result.y;p.vy=result.vy;p.grounded=result.grounded;
       }
     }
@@ -802,7 +805,8 @@ function tick(){
     }
     if(V311&&room.survival){
       if(!room.bossSpawned&&room.missionKills>=stageAt(room.levelIndex).bossAt&&room.zombies.length<Math.min(MAX_ZOMBIES,24)){
-        const source=(isMetro(room)?METRO_MAP.spawns:MAP.spawns).find(point=>[...room.players.values()].every(p=>distance2(point,p)>16));
+        const source=mapDataForRoom(room).spawns.find(point=>
+          canOccupy(point.x,point.z,.65,room)&&[...room.players.values()].every(p=>distance2(point,p)>16));
         if(source){
           const z={id:nextZombieId++,x:source.x,y:0,vy:0,grounded:true,z:source.z,kind:'boss',hp:stageAt(room.levelIndex).bossHp,maxHp:stageAt(room.levelIndex).bossHp,
             speed:SPECIALS.boss.speed,attackAt:0,abilityAt:0,step:0,facing:0,knockX:0,knockZ:0,vx:0,vz:0,stuckFor:0,nextStumble:0,stumbleUntil:0,rewarded:false,bossPhase:1};
@@ -824,8 +828,13 @@ function tick(){
       if(now>=room.nextExtraEventAt){
         room.nextExtraEventAt=now+45000;
         const event=nextEvent(Math.floor(Math.random()*100),room.pressure/100);
-        if(event==='horde')room.pending=Math.min(135,room.pending+12);
-        if(event==='blackout'&&!isMetro(room)&&triggerBlackout(room.protocol,now)){
+        if(event==='horde'){
+          if(isFlatMap(room)){
+            const group=queueMapHorde(room.mapDirector,{count:12,now,cause:'random',pressure:room.pressure});
+            if(group)announce(room,{type:'hordeWarning',gate:group.gate,label:group.label,count:group.total});
+          }else room.pending=Math.min(135,room.pending+12);
+        }
+        if(event==='blackout'&&!isFlatMap(room)&&triggerBlackout(room.protocol,now)){
           announce(room,{type:'environmentState',environment:publicEnvironment(room.protocol,now),
             action:'blackout',message:'隨機停電！城市照明中斷，使用 F 啟動備用發電機'});
         }
@@ -838,9 +847,22 @@ function tick(){
         announce(room,{type:'randomEvent',event,message:{horde:'新一波屍潮逼近',blackout:'全城停電！',supply_drop:'空投補給已抵達',fog:'濃霧來襲',radio_signal:'收到神秘求救信號'}[event]});
       }
     }
-    if(isMetro(room)&&now-(room.lastMetroFlowAt||0)>1200){
+    if(isFlatMap(room)&&now-(room.lastMetroFlowAt||0)>1400){
       room.lastMetroFlowAt=now;
-      for(const p of living)room.fields.set(p.id,metroFlowField(p));
+      for(const p of living)room.fields.set(p.id,isFacilityRoom(room)?
+        facilityFlowField(room.mapId,p):metroFlowField(p));
+    }
+    if(room.mapDirector&&isFlatMap(room)){
+      const warning=advanceMapDirector(room.mapDirector,{now,pressure:room.pressure,
+        activeCount:room.zombies.length,phase:room.phase});
+      if(warning)announce(room,{type:'hordeWarning',mapId:room.mapId,
+        gate:warning.gate,label:warning.label,count:warning.total,
+        message:'偵測到感染者從'+warning.label+'進入，請全隊戒備！'});
+      if(room.zombies.length<Math.min(MAX_ZOMBIES,30)&&room.directorPhase!=='relax'){
+        const upcoming=nextMapSpawn(room.mapDirector,{now,activeCount:room.zombies.length,
+          maxActive:Math.min(MAX_ZOMBIES,30),pressure:room.pressure});
+        if(upcoming)spawnZombie(room,upcoming);
+      }
     }
     const zombieBuckets=buildZombieBuckets(room.zombies);
     for(const z of room.zombies){
@@ -871,7 +893,7 @@ function tick(){
         const spec=SPECIALS[z.kind];z.abilityAt=now+spec.intervalMs;
         if(z.kind==='screamer')room.pending=Math.min(135,room.pending+4);
         if(z.kind==='spitter'&&xzDist<14&&heightDiff<3&&clearZombieSight(z,target,room))hurt(room,target,spec.damage);
-        if(z.kind==='boss'&&xzDist<8&&heightDiff<2&&clearZombieSight(z,target))hurt(room,target,spec.damage);
+        if(z.kind==='boss'&&xzDist<8&&heightDiff<2&&clearZombieSight(z,target,room))hurt(room,target,spec.damage);
         announce(room,{type:'specialAttack',kind:z.kind,id:z.id});
       }
       if(V311&&z.kind==='juggernaut'&&xzDist<2.3&&heightDiff<1.4&&now>=z.abilityAt){
@@ -995,7 +1017,7 @@ const server=http.createServer((req,res)=>{
   catch{res.writeHead(400);res.end();return;}
   if(url.pathname==='/health'){
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',contentVersion:V311?'3.13':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,
+    res.end(JSON.stringify({ok:true,app:'deadline-four-v3-9-2-physics-ws-navigation',version:V311?'3.11':'3.9.2',contentVersion:V311?'3.14':'3.9.2',mapSize:180,weaponCount:Object.keys(WEAPONS).length,
       rooms:rooms.size,connections:peers.size,activePlayers:[...rooms.values()].reduce((n,room)=>n+room.players.size,0),
       maxRooms:MAX_ROOMS,maxZombies:MAX_ZOMBIES,maxConnections:MAX_TOTAL_CONNECTIONS,
       websocketHeartbeatMs:SOCKET_PING_INTERVAL_MS,roomIdleLobbyMs:ROOM_IDLE_MS.lobby}));return;
