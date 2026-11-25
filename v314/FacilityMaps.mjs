@@ -66,7 +66,7 @@ export const FACILITY_MAPS=Object.freeze({
    {id:'hospitalGenerator',label:'備用電力系統',x:-23,y:0,z:-27,range:3.5,kind:'generator'},
    {id:'hospitalIsolation',label:'隔離病房解鎖',x:19,y:0,z:-26,range:3.5,kind:'seal'},
    {id:'hospitalSiren',label:'急診緊急廣播',x:-8,y:0,z:25,range:3.5,kind:'alarm'},
-   {id:'hospitalRadio',label:'直升機通訊台',x:59,y:0,z:45,range:3.5,kind:'relay'}
+   {id:'hospitalRadio',label:'直升機通訊台',x:64,y:0,z:45,range:3.5,kind:'relay'}
   ]),
   routes:Object.freeze(exits.hospital.map(x=>Object.freeze(x))),
   directorEntrances:Object.freeze([
