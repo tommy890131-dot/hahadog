@@ -366,7 +366,7 @@ export function detailHospital(root:THREE.Group):EnvironmentDetailKit{
  }
  kit.sign('手術區  SURGERY',-15,2.85,39.0,5.7,.84,Math.PI);
  kit.sign('藥品管理  PHARMACY',-4,2.85,30.1,5.7,.84);
- for(const [x,z] of [[-65,-27],[18,-26],[-10,24],[64,45]]){
+ for(const [x,z] of [[-23,-27],[19,-26],[-8,25],[64,45]]){
    kit.box('anodized',x,1.15,z-.44,1.03,.93,.12);
    kit.box('blueGlow',x,1.3,z-.53,.64,.37,.043);
    for(const dx of [-.26,0,.26])
@@ -470,7 +470,7 @@ export function detailHarbor(root:THREE.Group):EnvironmentDetailKit{
    }
  }
  for(const z of [-60,-38,-16,6,28,50,70]){
-   kit.box('anodized',0,4.85,z,.20,.11,151);
+   kit.box('anodized',0,5.15,z,144,.10,.20);
  }
  // Floodlight towers along the water-side wall.
  for(const z of [-61,-24,13,51]){
