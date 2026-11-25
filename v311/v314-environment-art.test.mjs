@@ -9,7 +9,9 @@ test('AAA-style environment modeling uses GPU-instanced parts instead of thousan
   assert.match(kit,/class EnvironmentDetailKit/);
   assert.match(kit,/new THREE\.InstancedMesh\(this\.shape\(type\),this\.material\(name\),parts\.length\)/);
   assert.match(kit,/new THREE\.CanvasTexture\(canvas\)/);
-  assert.match(kit,/new THREE\.MeshStandardMaterial\(\{color,roughness,metalness/);
+  assert.match(kit,/new THREE\.MeshStandardMaterial\(\{/);
+  assert.match(kit,/normalMap:maps\?\.normalMap/);
+  assert.match(kit,/roughnessMap:maps\?\.roughnessMap/);
   assert.match(kit,/texture\.wrapS=texture\.wrapT=THREE\.RepeatWrapping/);
   assert.match(kit,/detailOnly=true/);
 });
