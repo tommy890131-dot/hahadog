@@ -1,3 +1,4 @@
+export type GameMapId='city'|'underground_metro'|'infected_hospital'|'doomed_harbor';
 export type PlayerRecord = {
   id:string; name:string; x:number; y:number; vy:number; z:number; grounded:boolean; yaw:number; pitch:number; ackMoveSeq:number;
   hp:number;maxHp:number;armor:number;level:number;xp:number;nextXp:number;money:number;
@@ -14,7 +15,7 @@ export type EnvironmentState={
 export type DefenseRecord = {id:number;kind:'turret'|'barricade';x:number;y:number;z:number;hp:number;maxHp:number};
 export type LootRecord = {id:number;x:number;y:number;z:number;rarity:'common'|'uncommon'|'rare'|'legendary'};
 export type ServerEvent = {
-  type:string; id?:string; selfId?:string; code?:string; hostId?:string; mapId?:'city'|'underground_metro';
+  type:string; id?:string; selfId?:string; code?:string; hostId?:string; mapId?:GameMapId;
   phase?:string; players?:PlayerRecord[]; zombies?:ZombieRecord[];
   remaining?:number; wave?:number; remainingMs?:number; shopRemainingMs?:number; nextWave?:number; by?:string; target?:string;
   from?:{x:number;y:number;z:number}; to?:{x:number;y:number;z:number};
@@ -24,12 +25,12 @@ export type ServerEvent = {
   money?:number;xp?:number;level?:number;levelUps?:number;headshot?:boolean;
   ok?:boolean;sku?:string;reason?:string;action?:string;weaponId?:string;
   mission?:string;levelId?:string;missionPhase?:string;goal?:number;progress?:number;success?:boolean;classId?:string;
-  environment?:EnvironmentState;
+  environment?:EnvironmentState;gate?:string;label?:string;count?:number;
   defenses?:DefenseRecord[];loot?:LootRecord[];rarity?:string;credits?:number;event?:string;bossPhase?:number;kind?:string;defenseId?:number;levelLabel?:string;objective?:string;hasNextLevel?:boolean;result?:'won'|'lost'|null;levelIndex?:number;
 };
 export class Multiplayer {
   ws:WebSocket|null=null;
-  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number;levelIndex:number;levelLabel:string;mapId:'city'|'underground_metro';result:'won'|'lost'|null} = {
+  readonly session:{selfId:string;code:string;hostId:string;phase:string;players:PlayerRecord[];zombies:ZombieRecord[];wave:number;remaining:number;shopRemainingMs:number;levelIndex:number;levelLabel:string;mapId:GameMapId;result:'won'|'lost'|null} = {
     selfId:'',code:'',hostId:'',phase:'menu',players:[],zombies:[],wave:0,remaining:0,shopRemainingMs:0,levelIndex:0,levelLabel:'失聯街區',mapId:'city',result:null
   };
   onEvent:(event:ServerEvent)=>void=()=>{};
@@ -122,7 +123,7 @@ export class Multiplayer {
   create(name:string){this.send({type:'create',name});}
   join(code:string,name:string){this.send({type:'join',code,name});}
   start(){this.send({type:'start'});}
-  selectMap(mapId:'city'|'underground_metro'){this.send({type:'selectMap',mapId});}
+  selectMap(mapId:GameMapId){this.send({type:'selectMap',mapId});}
   retryLevel(){this.send({type:'retryLevel'});}
   nextLevel(){this.send({type:'nextLevel'});}
   restartCampaign(){this.send({type:'restartCampaign'});}
