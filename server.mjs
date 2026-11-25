@@ -852,7 +852,7 @@ function tick(){
       for(const p of living)room.fields.set(p.id,isFacilityRoom(room)?
         facilityFlowField(room.mapId,p):metroFlowField(p));
     }
-    if(room.mapDirector&&isFlatMap(room)){
+    if(room.mapDirector){
       const warning=advanceMapDirector(room.mapDirector,{now,pressure:room.pressure,
         activeCount:room.zombies.length,phase:room.phase});
       if(warning)announce(room,{type:'hordeWarning',mapId:room.mapId,
