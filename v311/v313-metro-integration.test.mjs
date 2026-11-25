@@ -61,11 +61,19 @@ test('live four-player server supports host-selected subway, distinct map snapsh
     a.send({type:'testCampaignResult',result:'won'});
     await a.expect(m=>m.type==='missionEnd'&&m.success===true&&m.mapId==='underground_metro');
     a.send({type:'nextLevel'});
-    await Promise.all([a.expect(m=>m.type==='campaignStart'&&m.levelIndex===2&&m.mapId==='city'),
-      b.expect(m=>m.type==='campaignStart'&&m.levelIndex===2&&m.mapId==='city')]);
-    const city=await a.expect(m=>m.type==='snapshot'&&m.mapId==='city'&&m.wave===1);
-    assert.equal(city.players.length,2,'same team survives transition');
-    assert.ok(city.players.some(p=>p.x>-5&&p.x<5),'spawn resets to city safehouse');
+    await Promise.all([a.expect(m=>m.type==='campaignStart'&&m.levelIndex===2&&m.mapId==='infected_hospital'),
+      b.expect(m=>m.type==='campaignStart'&&m.levelIndex===2&&m.mapId==='infected_hospital')]);
+    const hospital=await a.expect(m=>m.type==='snapshot'&&m.mapId==='infected_hospital'&&m.wave===1);
+    assert.equal(hospital.players.length,2,'same team survives transition');
+    assert.ok(hospital.players.every(p=>p.x<-60),'players enter hospital safehouse');
+    a.send({type:'testCampaignResult',result:'won'});
+    await a.expect(m=>m.type==='missionEnd'&&m.levelIndex===2&&m.success===true);
+    a.send({type:'nextLevel'});
+    await Promise.all([a.expect(m=>m.type==='campaignStart'&&m.levelIndex===3&&m.mapId==='doomed_harbor'),
+      b.expect(m=>m.type==='campaignStart'&&m.levelIndex===3&&m.mapId==='doomed_harbor')]);
+    const port=await a.expect(m=>m.type==='snapshot'&&m.mapId==='doomed_harbor'&&m.wave===1);
+    assert.equal(port.players.length,2);
+    assert.ok(port.players.every(p=>p.x<-60),'same team enters harbor safehouse');
   }finally{
     try{a?.ws.close();b?.ws.close();}catch{}
     proc.kill('SIGTERM');
