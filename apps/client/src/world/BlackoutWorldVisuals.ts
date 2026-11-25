@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type {EnvironmentState, EvacRoute} from '../network/Multiplayer';
 import {METRO_DEVICES,METRO_EXITS} from '../../../../v313/MetroEvents.mjs';
+import {FACILITY_MAPS} from '../../../../v314/FacilityMaps.mjs';
 
 type Marker={group:THREE.Group;light:THREE.Mesh;ring:THREE.Mesh;label:string};
 type Nearby={id:string;label:string;distance:number;ready:boolean};
@@ -55,6 +56,8 @@ export class BlackoutWorldVisuals {
       {id:'alarm',label:'誘餌警報器',x:-24,y:0,z:0},
       ...ALL_ROUTES,
       ...Object.values(METRO_DEVICES),...Object.values(METRO_EXITS),
+      ...FACILITY_MAPS.infected_hospital.devices,...FACILITY_MAPS.infected_hospital.routes,
+      ...FACILITY_MAPS.doomed_harbor.devices,...FACILITY_MAPS.doomed_harbor.routes,
     ];
     for(const p of list){
       const group=new THREE.Group();
@@ -117,7 +120,9 @@ export class BlackoutWorldVisuals {
     for(const {material,intensity} of this.emissive)
       material.emissiveIntensity=intensity*(1-this.blackout*.92);
     const metro=this.state?.devices.some(device=>device.id==='metroPower')??false;
-    const baseline=new THREE.Color(metro?0x030709:0x0a121c);
+    const hospital=this.state?.devices.some(device=>device.id==='hospitalGenerator')??false;
+    const harbor=this.state?.devices.some(device=>device.id==='harborGenerator')??false;
+    const baseline=new THREE.Color(metro?0x030709:hospital?0x111c20:harbor?0x07121c:0x0a121c);
     if(this.scene.background instanceof THREE.Color)
       this.scene.background.copy(baseline).lerp(new THREE.Color(0x010304),this.blackout*.74);
     if(this.scene.fog instanceof THREE.FogExp2)
