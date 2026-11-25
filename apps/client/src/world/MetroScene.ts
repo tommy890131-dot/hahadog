@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {METRO_BOXES} from '../../../../v313/MetroMap.mjs';
+import {detailMetro,type EnvironmentDetailKit} from './EnvironmentDetailKit';
 
 const steel=(color:number,emissive=0)=>new THREE.MeshStandardMaterial({
   color,emissive,emissiveIntensity:emissive?0.35:0,roughness:.72,metalness:.2
@@ -10,6 +11,7 @@ export class MetroScene {
   readonly blockers:THREE.Object3D[]=[];
   readonly keyLight:THREE.DirectionalLight;
   private readonly geometries:THREE.BufferGeometry[]=[];
+  private detailKit!:EnvironmentDetailKit;
   private readonly materials:THREE.Material[]=[];
   constructor(scene:THREE.Scene){
     this.group.name='DEADLINE FOUR - Underground Metro';
@@ -87,11 +89,15 @@ export class MetroScene {
       const lamp=new THREE.PointLight(0xb2d9e8,1.8,21,2);
       lamp.position.set(x,5.1,z);this.group.add(lamp);
     }
+    this.detailKit=detailMetro(this.group);
+    const stats=this.detailKit.finish();
+    this.group.userData.detailStats=stats;
     this.group.visible=false;
     scene.add(this.group);
   }
   setVisible(visible:boolean):void{this.group.visible=visible;}
   dispose():void{
+    this.detailKit.dispose();
     this.group.removeFromParent();
     for(const geometry of this.geometries)geometry.dispose();
     for(const mat of this.materials)mat.dispose();
