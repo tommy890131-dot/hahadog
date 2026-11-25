@@ -1,6 +1,7 @@
 import mapData from '../../../../packages/shared/MapLayout.json';
 import { TACTICAL_IDS } from '../../../../packages/shared/VerticalCollision.mjs';
 import {METRO_BOXES} from '../../../../v313/MetroMap.mjs';
+import {getFacility,isFacility} from '../../../../v314/FacilityMaps.mjs';
 import type {ZombieRecord,EnvironmentState} from '../network/Multiplayer';
 export class MapMini {
   private ctx:CanvasRenderingContext2D;
@@ -12,7 +13,7 @@ export class MapMini {
     this.ctx=ctx;this.ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   }
   draw(x:number,z:number,yaw:number,zombies:ZombieRecord[],environment?:EnvironmentState|null,
-    mapId:'city'|'underground_metro'='city'):void{
+    mapId:'city'|'underground_metro'|'infected_hospital'|'doomed_harbor'='city'):void{
     const ctx=this.ctx,s=this.size,h=mapData.halfSize,scale=s/(2*h),pt=(v:number)=>(v+h)*scale;
     ctx.clearRect(0,0,s,s);ctx.fillStyle='#0e1f28ef';ctx.fillRect(0,0,s,s);
     ctx.fillStyle='#384450';
@@ -35,11 +36,26 @@ export class MapMini {
       ctx.fillStyle='#d7b570';ctx.fillRect(pt(-78),pt(-7),156*scale,.6*scale);
       ctx.fillRect(pt(-78),pt(7),156*scale,.6*scale);
     }
+    if(isFacility(mapId)){
+      const map=getFacility(mapId)!;
+      ctx.fillStyle=mapId==='infected_hospital'?'#283d43':'#243846';
+      ctx.fillRect(pt(-78),pt(-78),156*scale,156*scale);
+      for(const b of map.boxes){
+        ctx.fillStyle=b.role==='wall'?'#546873':
+          b.role==='container'?'#8d7957':
+          b.role==='bed'||b.role==='surgery'?'#718f8b':'#7b858b';
+        ctx.fillRect(pt(b.x-b.w/2),pt(b.z-b.d/2),b.w*scale,b.d*scale);
+      }
+      for(const entry of map.directorEntrances){
+        ctx.fillStyle='#cb5e53';
+        ctx.beginPath();ctx.arc(pt(entry.x),pt(entry.z),2.3,0,Math.PI*2);ctx.fill();
+      }
+    }
     ctx.strokeStyle='#3fbbac';ctx.lineWidth=1.2;
     ctx.beginPath();
-    ctx.arc(pt(mapId==='underground_metro'?-66:0),
-      pt(mapId==='underground_metro'?-15:0),
-      (mapId==='underground_metro'?10:mapData.safehouse.radius)*scale,0,Math.PI*2);
+    const safehouse=isFacility(mapId)?getFacility(mapId)!.safehouse:
+      mapId==='underground_metro'?{x:-66,z:-15,radius:10}:mapData.safehouse;
+    ctx.arc(pt(safehouse.x),pt(safehouse.z),safehouse.radius*scale,0,Math.PI*2);
     ctx.stroke();
     // Fixed-location powered consoles and randomized server-authorized exits.
     if(environment){
@@ -50,7 +66,9 @@ export class MapMini {
         ctx.fillStyle=chosen?'#ffe5a5':route.ready?'#b2fff0':'#ab8b7a';
         ctx.beginPath();ctx.arc(pt(route.x),pt(route.z),chosen?5:3.8,0,Math.PI*2);ctx.stroke();
         ctx.font='bold 9px sans-serif';
-        ctx.fillText(route.id==='train'?'列':route.id==='safehouse'?'安':
+        ctx.fillText(route.id==='ambulance'?'救':route.id==='helipad'?'直':
+          route.id==='rescue_boat'?'船':route.id==='dock_truck'?'車':
+          route.id==='train'?'列':route.id==='safehouse'?'安':
           route.id==='van'?'車':route.id==='convoy'?'醫':'洞',pt(route.x)+5,pt(route.z)-5);
       }
       for(const device of environment.devices){
@@ -59,7 +77,10 @@ export class MapMini {
         ctx.fillStyle='#ffcd76';
         ctx.fillRect(x-2.5,y-2.5,5,5);
         ctx.font='bold 9px sans-serif';
-        ctx.fillText(device.id==='generator'||device.id==='metroPower'?'電':
+        ctx.fillText(device.id.toLowerCase().includes('generator')||device.id==='metroPower'?'電':
+          device.id.toLowerCase().includes('radio')?'訊':
+          device.id.toLowerCase().includes('crane')?'吊':
+          device.id.toLowerCase().includes('isolation')?'隔':
           device.id==='relay'||device.id==='metroTrain'?'列':'警',x+5,y-4);
       }
       const selected=environment.routes.find(route=>route.id===environment.selectedRoute);
