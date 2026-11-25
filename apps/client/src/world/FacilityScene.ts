@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {FACILITY_MAPS} from '../../../../v314/FacilityMaps.mjs';
+import {detailHospital,detailHarbor,type EnvironmentDetailKit} from './EnvironmentDetailKit';
 
 type FacilityId='infected_hospital'|'doomed_harbor';
 
@@ -9,6 +10,7 @@ export class FacilityScene {
  readonly group=new THREE.Group();
  readonly blockers:THREE.Object3D[]=[];
  private readonly geometries:THREE.BufferGeometry[]=[];
+ private detailKit!:EnvironmentDetailKit;
  private readonly materials:THREE.Material[]=[];
  private readonly lights:THREE.Light[]=[];
  constructor(scene:THREE.Scene,readonly mapId:FacilityId){
@@ -103,7 +105,7 @@ export class FacilityScene {
    safe.position.set(map.safehouse.x,3,map.safehouse.z);
    this.group.add(safe);this.lights.push(safe);
    const roofMat=map.theme==='hospital'?mat(0x252f34):mat(0x303a42);
-   details(0,5.4,0,159,.12,159,roofMat);
+   if(map.theme==='hospital')details(0,5.4,0,159,.12,159,roofMat);
    // 12 small lamps with no shadow maps rather than hundreds of point lights.
    for(const [i,z] of [-58,-25,5,35,62].entries()){
      for(const x of [-55,-9,43]){
@@ -114,11 +116,14 @@ export class FacilityScene {
        }
      }
    }
+   this.detailKit=map.theme==='hospital'?detailHospital(this.group):detailHarbor(this.group);
+   this.group.userData.detailStats=this.detailKit.finish();
    this.group.visible=false;
    scene.add(this.group);
  }
  setVisible(visible:boolean):void{this.group.visible=visible;}
  dispose():void{
+   this.detailKit.dispose();
    this.group.removeFromParent();
    for(const g of this.geometries)g.dispose();
    for(const m of this.materials)m.dispose();
