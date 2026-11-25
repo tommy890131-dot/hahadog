@@ -8,9 +8,9 @@ export const STAGE_RULES=Object.freeze([
   Object.freeze({goal:16,bossAt:10,bossHp:1900,extraEnemies:8,extractionMs:85000,
     objective:'恢復月台電力、啟動列車並抵擋隧道感染者'}),
   Object.freeze({goal:20,bossAt:12,bossHp:2400,extraEnemies:14,extractionMs:80000,
-    objective:'守住工業設施並擊敗重甲異變體'}),
+    objective:'修復醫院供電、解除隔離門、對抗病房變異者'}),
   Object.freeze({goal:24,bossAt:15,bossHp:3000,extraEnemies:20,extractionMs:75000,
-    objective:'突破最後封鎖，擊敗終極變異體'}),
+    objective:'啟動港口起重機、聯絡救援船並擊敗終極變異體'}),
 ]);
 export const LAST_LEVEL=LEVELS.length-1;
 if(STAGE_RULES.length!==LEVELS.length)throw new Error('Campaign stage count mismatch');
