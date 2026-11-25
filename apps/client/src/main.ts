@@ -21,7 +21,6 @@ import { configureSurfaceMaterialQuality, surfaceMaterialsReady } from './world/
 import { ZombieCrowd } from './world/ZombieCrowd';
 import { Teammates } from './world/Teammates';
 import { MapMini } from './world/MapMini';
-import {FACILITY_MAPS} from '../../../v314/FacilityMaps.mjs';
 import { ShopUI } from './shop/ShopUI';
 import { Multiplayer,type ServerEvent,type PlayerRecord,type EnvironmentState,type GameMapId } from './network/Multiplayer';
 import { FixedPhysicsClock } from '../../../packages/shared/FixedPhysicsClock.mjs';
