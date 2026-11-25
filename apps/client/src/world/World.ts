@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import mapData from '../../../../packages/shared/MapLayout.json';
 import { surfaceMaterial, facadeMaterial } from './SurfaceMaterials';
 import { addCityDetails } from './CityDetails';
+import {EnvironmentDetailKit} from './EnvironmentDetailKit';
+import {refineCityArchitecture} from './ArchitectureRefinement';
 import {MetroScene} from './MetroScene';
 import {FacilityScene} from './FacilityScene';
 import {isFacility,facilityCanOccupy,facilityMoveHorizontal} from '../../../../v314/FacilityMaps.mjs';
@@ -35,6 +37,7 @@ export class World {
   private metroScene!:MetroScene;
   private facilityScenes!:Record<'infected_hospital'|'doomed_harbor',FacilityScene>;
   private cityObjects:THREE.Object3D[]=[];
+  private cityDetailKit:EnvironmentDetailKit|null=null;
   private cityBlockers:THREE.Object3D[]=[];
   private currentChapter:'city'|'underground_metro'|'infected_hospital'|'doomed_harbor'='city';
 
@@ -148,6 +151,13 @@ export class World {
     }
 
     addCityDetails(scene, layout.buildings);
+    const architecturalFacades=new THREE.Group();
+    architecturalFacades.name='Detailed city architectural elements';
+    const refinement=new EnvironmentDetailKit(architecturalFacades);
+    refineCityArchitecture(refinement,layout.buildings);
+    architecturalFacades.userData.detailStats=refinement.finish();
+    this.cityDetailKit=refinement;
+    scene.add(architecturalFacades);
     this.streetProps(scene);
     this.createSafehouse(scene);
     this.cityObjects=scene.children.filter(child=>!preexisting.has(child));
@@ -183,6 +193,7 @@ export class World {
   }
   get chapter():string{return this.currentChapter;}
   disposeChapter():void{
+    this.cityDetailKit?.dispose();
     this.metroScene.dispose();
     for(const facility of Object.values(this.facilityScenes))facility.dispose();
   }
