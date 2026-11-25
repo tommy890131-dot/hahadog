@@ -3,6 +3,8 @@ import mapData from '../../../../packages/shared/MapLayout.json';
 import { surfaceMaterial, facadeMaterial } from './SurfaceMaterials';
 import { addCityDetails } from './CityDetails';
 import {MetroScene} from './MetroScene';
+import {FacilityScene} from './FacilityScene';
+import {isFacility,facilityCanOccupy,facilityMoveHorizontal} from '../../../../v314/FacilityMaps.mjs';
 import {metroCanOccupy,metroMoveHorizontal} from '../../../../v313/MetroMap.mjs';
 import { TACTICAL_IDS, VERTICAL_LAYOUT, canOccupyAt, moveHorizontal, surfaceHeightAt } from '../../../../packages/shared/VerticalCollision.mjs';
 
@@ -31,9 +33,10 @@ export class World {
   private readonly shadowUp = new THREE.Vector3().crossVectors(this.shadowBack,this.shadowRight).normalize();
   private readonly shadowCenter = new THREE.Vector3();
   private metroScene!:MetroScene;
+  private facilityScenes!:Record<'infected_hospital'|'doomed_harbor',FacilityScene>;
   private cityObjects:THREE.Object3D[]=[];
   private cityBlockers:THREE.Object3D[]=[];
-  private currentChapter:'city'|'underground_metro'='city';
+  private currentChapter:'city'|'underground_metro'|'infected_hospital'|'doomed_harbor'='city';
 
   constructor(scene:THREE.Scene){
     // The perspective camera already belongs to the scene. Never hide the
@@ -150,26 +153,39 @@ export class World {
     this.cityObjects=scene.children.filter(child=>!preexisting.has(child));
     this.cityBlockers=this.blockers.slice();
     this.metroScene=new MetroScene(scene);
+    this.facilityScenes={
+      infected_hospital:new FacilityScene(scene,'infected_hospital'),
+      doomed_harbor:new FacilityScene(scene,'doomed_harbor')
+    };
   }
-  setChapter(id:'city'|'underground_metro'):void{
+  setChapter(id:'city'|'underground_metro'|'infected_hospital'|'doomed_harbor'):void{
     if(this.currentChapter===id)return;
     this.currentChapter=id;
     const metro=id==='underground_metro';
-    for(const obj of this.cityObjects)obj.visible=!metro;
+    for(const obj of this.cityObjects)obj.visible=id==='city';
     this.metroScene.setVisible(metro);
-    this.blockers.splice(0,this.blockers.length,...(metro?this.metroScene.blockers:this.cityBlockers));
-    this.ground.visible=!metro;
+    this.facilityScenes.infected_hospital.setVisible(id==='infected_hospital');
+    this.facilityScenes.doomed_harbor.setVisible(id==='doomed_harbor');
+    const mapBlockers=isFacility(id)?this.facilityScenes[id].blockers:
+      metro?this.metroScene.blockers:this.cityBlockers;
+    this.blockers.splice(0,this.blockers.length,...mapBlockers);
+    this.ground.visible=id==='city';
     this.lastShadowX=Number.NaN;
-    this.sceneBackground(metro);
+    this.sceneBackground(id);
   }
-  private sceneBackground(metro:boolean):void{
+  private sceneBackground(id:string):void{
     const scene=this.metroScene.group.parent;
     if(!(scene instanceof THREE.Scene))return;
-    scene.background=new THREE.Color(metro?0x030709:0x0a121c);
-    scene.fog=new THREE.FogExp2(metro?0x030709:0x0a121c,metro?.018:.012);
+    const metro=id==='underground_metro',hospital=id==='infected_hospital';
+    const color=metro?0x030709:hospital?0x111c20:id==='doomed_harbor'?0x07121c:0x0a121c;
+    scene.background=new THREE.Color(color);
+    scene.fog=new THREE.FogExp2(color,id==='city'?.012:metro?.018:.008);
   }
   get chapter():string{return this.currentChapter;}
-  disposeChapter():void{this.metroScene.dispose();}
+  disposeChapter():void{
+    this.metroScene.dispose();
+    for(const facility of Object.values(this.facilityScenes))facility.dispose();
+  }
 
   /** Procedural shell, walkable upstairs floor, external switchback ramps and rooftop. */
   private createTacticalBuilding(scene:THREE.Scene,b:Building):void{
@@ -340,7 +356,7 @@ export class World {
    * shadow rendering enabled so moving zombies continue to cast shadows.
    */
   updateShadowFocus(player: THREE.Vector3): void {
-    if(this.currentChapter==='underground_metro')return;
+    if(this.currentChapter!=='city')return;
     const camera = this.moonLight.shadow.camera;
     const texel = (camera.right-camera.left)/this.moonLight.shadow.mapSize.x;
     const u = Math.round(player.dot(this.shadowRight)/texel)*texel;
@@ -359,15 +375,20 @@ export class World {
   }
 
   canOccupy(x:number,z:number,r=.36):boolean{
-    return this.currentChapter==='underground_metro'?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
+    return isFacility(this.currentChapter)?facilityCanOccupy(this.currentChapter,x,z,0,r):
+      this.currentChapter==='underground_metro'?metroCanOccupy(x,z,0,r):canOccupyAt(x,z,0,r);
   }
   canOccupy3D(x:number,z:number,feet:number,r=.36):boolean{
-    return this.currentChapter==='underground_metro'?metroCanOccupy(x,z,feet,r):canOccupyAt(x,z,feet,r);
+    return isFacility(this.currentChapter)?facilityCanOccupy(this.currentChapter,x,z,feet,r):
+      this.currentChapter==='underground_metro'?metroCanOccupy(x,z,feet,r):canOccupyAt(x,z,feet,r);
   }
   supportHeight(x:number,z:number,feet:number):number|null{
-    return this.currentChapter==='underground_metro'?0:surfaceHeightAt(x,z,feet);
+    return this.currentChapter!=='city'?0:surfaceHeightAt(x,z,feet);
   }
   movePlayer(x:number,z:number,feet:number,dx:number,dz:number,grounded:boolean){
-    return this.currentChapter==='underground_metro'?metroMoveHorizontal(x,z,feet,dx,dz,grounded):moveHorizontal(x,z,feet,dx,dz,grounded);
+    return isFacility(this.currentChapter)?
+      facilityMoveHorizontal(this.currentChapter,x,z,feet,dx,dz,grounded):
+      this.currentChapter==='underground_metro'?metroMoveHorizontal(x,z,feet,dx,dz,grounded):
+      moveHorizontal(x,z,feet,dx,dz,grounded);
   }
 }
