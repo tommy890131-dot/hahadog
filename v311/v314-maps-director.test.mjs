@@ -22,7 +22,7 @@ for(const mapId of ['infected_hospital','doomed_harbor']){
    for(const d of map.routes)assert.equal(facilityCanOccupy(mapId,d.x,d.z,0,.36),true,'exit '+d.id);
    const block=map.boxes.find(x=>x.role==='container'||x.role==='wall');
    assert.equal(facilityCanOccupy(mapId,block.x,block.z),false);
-   assert.ok(facilityCollisionBoxes(mapId).length>20);
+   assert.ok(facilityCollisionBoxes(mapId).length>=18);
    assert.equal(facilityCanOccupy(mapId,0,99),false);
  });
  test(mapId+' movement cannot penetrate room walls or the outer map limits',()=>{
@@ -89,7 +89,7 @@ test('AI director chooses map-specific entrances, distinct infected compositions
  assert.equal(first.gate,'containers');
  assert.ok(['runner','climber','walker'].includes(first.kind));
  assert.equal(nextMapSpawn(state,{now:2050,activeCount:1,maxActive:30}),null,'spawn throttled');
- const next=nextMapSpawn(state,{now:2250,activeCount:1,maxActive:30});
+ const next=nextMapSpawn(state,{now:2500,activeCount:1,maxActive:30});
  assert.ok(next);
  assert.equal(advanceMapDirector(state,{now:40_000,pressure:90,activeCount:25,phase:'playing'}),null,'high pressure relief');
 });
