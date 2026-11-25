@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {FACILITY_MAPS} from '../../../../v314/FacilityMaps.mjs';
 
 type FacilityId='infected_hospital'|'doomed_harbor';
-type FacilityData=(typeof FACILITY_MAPS)[FacilityId];
 
 /** Original game-scale hospital and port geometry. Entire chapter is hidden
  * between levels; instanced walls, props and fixtures keep draw calls bounded. */
@@ -12,8 +11,7 @@ export class FacilityScene {
  private readonly geometries:THREE.BufferGeometry[]=[];
  private readonly materials:THREE.Material[]=[];
  private readonly lights:THREE.Light[]=[];
- private readonly owned:THREE.Object3D[]=[];
- constructor(private readonly scene:THREE.Scene,readonly mapId:FacilityId){
+ constructor(scene:THREE.Scene,readonly mapId:FacilityId){
    const map=FACILITY_MAPS[mapId];
    this.group.name='DEADLINE FOUR / '+mapId;
    const mat=(color:number,emissive=0)=>{
