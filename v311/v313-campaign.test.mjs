@@ -81,7 +81,7 @@ test('two maps share multiplayer room protocol but render distinct scenes and le
   assert.match(server,/moveRoomPlayer\(room,p\.x,p\.z,p\.y,dx,dz,p\.grounded\)/);
   assert.match(server,/metroExtractionZone\(room\.protocol,p,now\)/);
   assert.match(server,/metroFlowField\(p\)/);
-  assert.match(main,/world\.setChapter\(event\.mapId/);
+  assert.match(main,/world\.setChapter\(mapId\)/);
   assert.match(main,/network\.selectMap\(mapSelect\.value/);
   assert.match(world,/new MetroScene\(scene\)/);
   assert.match(world,/metroCanOccupy\(x,z,feet,r\)/);
