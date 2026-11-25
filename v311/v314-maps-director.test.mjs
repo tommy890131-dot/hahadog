@@ -101,6 +101,7 @@ test('server and client share four map identifiers, triggers and gate warnings',
  assert.match(server,/facilityInteract\(room.protocol,input\)/);
  assert.match(server,/queueMapHorde\(room.mapDirector/);
  assert.match(server,/facilityExtractionZone\(room.protocol,p\)/);
+ assert.match(server,/getFacility\(room.mapId\).routes.find\(r=>r.id===room.protocol.selectedRoute\)/);
  assert.match(client,/value="infected_hospital"/);
  assert.match(client,/value="doomed_harbor"/);
  assert.match(world,/new FacilityScene\(scene,'infected_hospital'\)/);
