@@ -9,7 +9,6 @@ import {FACILITY_MAPS} from '../../../../v314/FacilityMaps.mjs';
  */
 type Finish='boardConcrete'|'stone'|'plaster'|'tile'|'steel'|'oxidized'|'paintMetal'|'glass'|'rubber'|'paintStripe';
 type Part={x:number;y:number;z:number;w:number;h:number;d:number;yaw:number};
-type MeterBox={id:string;x:number;y:number;z:number;w:number;h:number;d:number;role?:string};
 const TINT:Record<Finish,{color:number;rough:number;metal:number;depth:number}>={
   boardConcrete:{color:0x899393,rough:.96,metal:0,depth:.47},
   stone:{color:0x626b70,rough:.92,metal:0,depth:.34},
