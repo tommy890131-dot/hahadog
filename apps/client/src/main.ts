@@ -21,8 +21,9 @@ import { configureSurfaceMaterialQuality, surfaceMaterialsReady } from './world/
 import { ZombieCrowd } from './world/ZombieCrowd';
 import { Teammates } from './world/Teammates';
 import { MapMini } from './world/MapMini';
+import {FACILITY_MAPS} from '../../../v314/FacilityMaps.mjs';
 import { ShopUI } from './shop/ShopUI';
-import { Multiplayer,type ServerEvent,type PlayerRecord,type EnvironmentState } from './network/Multiplayer';
+import { Multiplayer,type ServerEvent,type PlayerRecord,type EnvironmentState,type GameMapId } from './network/Multiplayer';
 import { FixedPhysicsClock } from '../../../packages/shared/FixedPhysicsClock.mjs';
 import { MoveReconciler } from '../../../packages/shared/MoveReconciler.mjs';
 import './style.css';
@@ -30,8 +31,8 @@ import './style.css';
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <div id="overlay"><div class="panel">
-  <div class="eyebrow">DEADLINE FOUR · V3.13 · OUTBREAK CAMPAIGN</div>
-  <h1>末日防線 <span>V3.13</span></h1>
+  <div class="eyebrow">DEADLINE FOUR · V3.14 · FOUR CHAPTERS</div>
+  <h1>末日防線 <span>V3.14</span></h1>
   <p class="desc">FOUR SURVIVORS · ONE LAST NIGHT</p>
   <div class="loading-track"><div id="loading-bar"></div></div>
   <div id="loading-text">初始化夜間城市…</div><p id="connection" class="status">伺服器連線中</p>
@@ -42,7 +43,7 @@ app.innerHTML=`
     <h2 id="code">-----</h2><div id="roster"></div>
     <button id="start-wave">隊長開始戰鬥</button><p class="hint">四位隊友使用同一網址，輸入房號即可合作。</p></section>
   <section id="battle-entry" class="hidden"><h2 id="chapter-entry-title">感染區域作戰</h2>
-    <button id="enter">進入戰役地圖 · 鎖定滑鼠</button><p class="hint">雙地圖戰役 · 地鐵列車啟動 · 隧道屍潮 · 多路線撤離。</p></section>
+    <button id="enter">進入戰役地圖 · 鎖定滑鼠</button><p class="hint">四張戰役地圖 · 捷運列車 · 醫院隔離門 · 港口起重機 · 動態屍潮。</p></section>
   <section id="game-over" class="hidden" aria-label="關卡結算">
     <h2 id="result-title">任務結算</h2>
     <p id="last-wave"></p>
@@ -66,7 +67,7 @@ app.innerHTML=`
         <dt>戰鬥及裝備</dt><dd>左鍵開火、右鍵瞄準、狙擊槍開鏡時滾輪切換 4×／8×、R 換彈、1／2 換武器、V 推擊</dd>
         <dt>合作與職業</dt><dd>Q 職業技能、E 救援隊友、Tab 查看小隊完整戰績</dd>
         <dt>防禦與搜刮</dt><dd>G 部署機槍塔、H 部署路障、T 修理設施、F 操作機關／搜刮、B 開啟商店</dd>
-        <dt>V3.13 多地圖戰役</dt><dd>隊長可在房間選擇城市或地下捷運。地下捷運按 F 恢復電力、啟動列車或警報；觸發屍潮後可選擇列車／安全屋撤離。</dd>
+        <dt>V3.13 多地圖戰役</dt><dd>隊長可在房間選擇城市、捷運、感染醫院、末日港口。按 F 操作機關；屍潮會從不同入口進攻，完成任務後全隊撤離。</dd>
         <dt>畫質及暫停</dt><dd>F8 畫質模式、Esc 解除滑鼠鎖定並顯示選單</dd>
       </dl>
     </details>
@@ -74,7 +75,7 @@ app.innerHTML=`
   <p id="notice" class="status"></p>
   <div id="asset-label" class="status"></div>
 </div></div>
-<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.13 · OUTBREAK / COOP</small></div>
+<div id="hud" class="hidden"><div class="hud-title">DEADLINE FOUR <small>V3.14 · OUTBREAK / COOP</small></div>
   <div id="mission">WAVE 01</div><div id="squad"></div><div id="feedback">小隊整備中</div><div id="performance"></div></div>
 <div id="player-hud" class="hidden"><div class="currency"><span id="money">$600</span><span id="level">LV 1</span></div>
   <div class="stat-label">護甲 <span id="armor-value">0 / 100</span></div><div class="stat-track armor-track"><div id="armor-fill"></div></div>
@@ -354,12 +355,14 @@ mapSelector.style.cssText='display:flex;gap:10px;align-items:center;justify-cont
 mapSelector.innerHTML='<label for="map-select">戰役地圖</label>'+
   '<select id="map-select" style="color:#e9f8fb;background:#172930;border:1px solid #5b8687;border-radius:5px;padding:7px">'+
   '<option value="city">01｜失控城市</option>'+
-  '<option value="underground_metro">02｜地下捷運・斷線終點站</option></select>';
+  '<option value="underground_metro">02｜地下捷運・斷線終點站</option>'+
+  '<option value="infected_hospital">03｜感染醫院・封鎖病區</option>'+
+  '<option value="doomed_harbor">04｜末日港口・海霧封鎖線</option></select>';
 get<HTMLElement>('lobby').append(mapSelector);
 const mapSelect=get<HTMLSelectElement>('map-select');
 mapSelect.onchange=()=>{
   if(network.session.hostId===network.session.selfId)
-    network.selectMap(mapSelect.value as 'city'|'underground_metro');
+    network.selectMap(mapSelect.value as GameMapId);
 };
 const physicsClock = new FixedPhysicsClock();
 const moveReconciler = new MoveReconciler();
@@ -404,7 +407,7 @@ function renderCampaignResult():void{
   visible(get<HTMLElement>('campaign-waiting'),!isHost);
   get<HTMLElement>('result-title').textContent=won?'關卡通關成功！':'任務失敗';
   get<HTMLElement>('campaign-progress').textContent=won&&!completed
-    ?'下一關：'+(['失聯街區','地下捷運・斷線終點站','工業封鎖區','最後防線'][session.levelIndex+1]||'下一階段')
+    ?'下一關：'+(['失控城市','地下捷運・斷線終點站','感染醫院・封鎖病區','末日港口・海霧封鎖線'][session.levelIndex+1]||'下一階段')
     :completed?'四個關卡已完成！':session.levelLabel+' · 可重新挑戰';
 }
 function enterBattle(){
@@ -479,17 +482,25 @@ function renderHUD(){
 network.onEvent=(event:ServerEvent)=>{
   if(event.type==='error'){alertMessage(event.message||'操作失敗');return;}
   if(event.type==='campaignStart'){
-    world.setChapter(event.mapId==='underground_metro'?'underground_metro':'city');
-    get<HTMLElement>('chapter-entry-title').textContent=event.mapId==='underground_metro'
-      ?'地下捷運・斷線終點站':'失控城市・第一戰役';
+    const mapId:GameMapId=event.mapId??'city';
+    world.setChapter(mapId);
+    const chapterLabels:Record<GameMapId,string>={
+      city:'失控城市・第一戰役',
+      underground_metro:'地下捷運・斷線終點站',
+      infected_hospital:'感染醫院・封鎖病區',
+      doomed_harbor:'末日港口・海霧封鎖線'
+    };
+    get<HTMLElement>('chapter-entry-title').textContent=chapterLabels[mapId];
     physicsClock.reset();moveReconciler.reset();
-    const starts=event.mapId==='underground_metro'?[-69,-14]:[-3,-2];
+    const starts:readonly [number,number]=mapId==='underground_metro'?[-69,-14]:
+      mapId==='infected_hospital'?[-66,-10]:
+      mapId==='doomed_harbor'?[-67,-54]:[-3,-2];
     controller.teleport(starts[0],starts[1],0);
     objectivePhase='objectives';
     endingMood=null;
     updateEnvironment(event.environment??null);
     soundtrack.say('missionStart',true);
-    if(event.mapId==='underground_metro')alertMessage('地下捷運已載入。先恢復月台電力，再啟動列車，注意隧道屍潮');
+    if(mapId!=='city')alertMessage(chapterLabels[mapId]+' 已載入，請跟隊友保持隊形');
     sound.playSfx('objective',.60);
     missionOverlay.style.display='none';
     battleExtras.update([],[]);
@@ -538,6 +549,10 @@ network.onEvent=(event:ServerEvent)=>{
     if(event.action==='power_restored'){sound.playSfx('powerRestore',.65);soundtrack.say('powerRestored');}
     if(event.action==='relay_online'){sound.playSfx('relay',.65);soundtrack.say('relay');}
     if(event.action==='alarm'){sound.playSfx('alarm',.8);soundtrack.say('alarm',true);}
+    if(event.action==='seal_open'||event.action==='crane_started'){
+      sound.playSfx('alarm',.73);sound.playSfx('horde',.6);
+      soundtrack.say('wave',true);
+    }
     if(event.action==='train_started'){
       sound.playSfx('alarm',.78);sound.playSfx('horde',.65);
       soundtrack.say('wave',true);
@@ -550,6 +565,13 @@ network.onEvent=(event:ServerEvent)=>{
       }
     }
     updateMusic();return;
+  }
+  if(event.type==='hordeWarning'){
+    const label=event.label||'未知入口';
+    alertMessage('⚠ '+label+'：'+(event.count??'多名')+' 名感染者正在集結！');
+    sound.playSfx('horde',.73);
+    soundtrack.say('wave');
+    return;
   }
   if(event.type==='environmentAction'){
     if(event.message)alertMessage(event.message);
