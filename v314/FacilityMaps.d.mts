@@ -1,0 +1,14 @@
+export type FacilityId='infected_hospital'|'doomed_harbor';
+export type FacilityBox={id:string;x:number;y:number;z:number;w:number;h:number;d:number;solid:boolean;role:string};
+export type FacilityPos={x:number;z:number;y?:number};
+export type FacilityLayout={id:FacilityId;label:string;theme:'hospital'|'harbor';halfSize:number;ground:{w:number;d:number};safehouse:{x:number;z:number;radius:number};starts:readonly (readonly [number,number])[];boxes:readonly FacilityBox[];spawns:readonly {x:number;z:number;gate:string}[];devices:readonly {id:string;label:string;x:number;y:number;z:number;range:number;kind:string}[];routes:readonly {id:string;label:string;x:number;y:number;z:number;radius:number;requires:string}[];directorEntrances:readonly {id:string;label:string;x:number;z:number;types:readonly string[]}[]};
+export const FACILITY_MAPS:Readonly<Record<FacilityId,Readonly<FacilityLayout>>>;
+export function isFacility(id:string):id is FacilityId;
+export function getFacility(id:string):Readonly<FacilityLayout>|null;
+export function facilityCanOccupy(mapId:string,x:number,z:number,feet?:number,radius?:number,height?:number):boolean;
+export function facilityMoveHorizontal(mapId:string,x:number,z:number,feet:number,dx:number,dz:number,grounded:boolean,radius?:number):{x:number;z:number;feet:number};
+export function facilityStepVertical(y:number,vy:number,grounded:boolean,x:number,z:number,dt:number):{y:number;vy:number;grounded:boolean};
+export function facilityCollisionBoxes(mapId:string):{minX:number;maxX:number;minY:number;maxY:number;minZ:number;maxZ:number}[];
+export function facilityFlowField(mapId:string,target:FacilityPos):{dist:Int32Array;next:Int32Array;targetX:number;targetZ:number};
+export function facilityRouteDirection(mapId:string,zombie:FacilityPos,target:FacilityPos,field:ReturnType<typeof facilityFlowField>):{dx:number;dz:number};
+export function facilityPursue(mapId:string,zombie:Record<string,number|boolean>,player:FacilityPos,field:ReturnType<typeof facilityFlowField>,dt:number):void;
