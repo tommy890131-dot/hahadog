@@ -54,7 +54,7 @@ test('hospital emergency power/isolation, siren and helicopter radio are server-
  assert.equal(use(s,p(19,-26),'hospitalIsolation',3200).ok,false,'duplicate');
  assert.equal(use(s,p(-8,25),'hospitalSiren',4000).horde,16);
  assert.equal(use(s,p(-8,25),'hospitalSiren',5000).ok,false,'cooldown');
- assert.equal(use(s,p(59,45),'hospitalRadio',6000).action,'relay_online');
+ assert.equal(use(s,p(64,45),'hospitalRadio',6000).action,'relay_online');
  assert.equal(use(s,p(0,0),'hospitalGenerator',8000).ok,false,'remote operation');
  assert.equal(facilityInteract(s,{player:p(-23,-27),id:'hospitalGenerator',
   now:9000,phase:'lobby',downed:false}).ok,false,'lobby cannot operate');
