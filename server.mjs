@@ -759,8 +759,9 @@ function finishCampaign(room,result){
       LEVELS[room.levelIndex].label,hasNextLevel:room.levelIndex<LAST_LEVEL,
     routeId:won?room.protocol?.selectedRoute:null,
     message:won&&room.protocol?.selectedRoute
-      ?'小隊成功由「'+(isMetro(room)
-        ?METRO_EXITS[room.protocol.selectedRoute]?.label
+      ?'小隊成功由「'+(isFacilityRoom(room)
+        ?getFacility(room.mapId).routes.find(r=>r.id===room.protocol.selectedRoute)?.label
+        :isMetro(room)?METRO_EXITS[room.protocol.selectedRoute]?.label
         :ROUTES[room.protocol.selectedRoute]?.label)+'」撤離！'
       :won?'小隊成功撤離！':'撤離任務失敗'});
   syncLobby(room);
