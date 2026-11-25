@@ -107,7 +107,7 @@ export class FacilityScene {
    const roofMat=map.theme==='hospital'?mat(0x252f34):mat(0x303a42);
    if(map.theme==='hospital')details(0,5.4,0,159,.12,159,roofMat);
    // 12 small lamps with no shadow maps rather than hundreds of point lights.
-   for(const [i,z] of [-58,-25,5,35,62].entries()){
+   if(map.theme==='hospital')for(const [i,z] of [-58,-25,5,35,62].entries()){
      for(const x of [-55,-9,43]){
        details(x,5.25,z,4.7,.16,.45,pale);
        if(i%2===0){
