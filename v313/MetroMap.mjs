@@ -35,7 +35,16 @@ export const METRO_BOXES=Object.freeze([
   {id:'ticket-gate-n',x:-44,z:-13,w:2,d:3,y:.62,h:1.24,solid:true,role:'gate'},
   {id:'ticket-gate-s',x:-44,z:13,w:2,d:3,y:.62,h:1.24,solid:true,role:'gate'},
   {id:'supply-cabinet',x:1,z:-23,w:2.3,d:2,y:1,h:2,solid:true,role:'equipment'},
-  {id:'equipment-bay',x:49,z:23,w:2.6,d:2.1,y:1.4,h:2.8,solid:true,role:'equipment'}
+  {id:'equipment-bay',x:49,z:23,w:2.6,d:2.1,y:1.4,h:2.8,solid:true,role:'equipment'},
+  // Expanded tactical subway: emergency machine rooms, platform benches,
+  // sealed service alcove and electrical cabinets with traversable aisle gaps.
+  {id:'subway-workshop',x:-61,z:22,w:7,d:4,h:2.5,y:1.25,solid:true,role:'equipment'},
+  {id:'subway-breaker-bay',x:-63,z:-24,w:4,d:2.6,h:2.4,y:1.2,solid:true,role:'equipment'},
+  {id:'metro-bench-n1',x:-24,z:-22,w:3.4,d:1.1,h:.95,y:.475,solid:true,role:'gate'},
+  {id:'metro-bench-n2',x:17,z:-22,w:3.4,d:1.1,h:.95,y:.475,solid:true,role:'gate'},
+  {id:'metro-bench-s1',x:-25,z:23,w:3.4,d:1.1,h:.95,y:.475,solid:true,role:'gate'},
+  {id:'metro-bench-s2',x:23,z:23,w:3.4,d:1.1,h:.95,y:.475,solid:true,role:'gate'},
+  {id:'metro-service-desk',x:-7,z:24,w:3.5,d:1.4,h:1.15,y:.575,solid:true,role:'gate'}
 ]);
 const EPS=.00001;
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
