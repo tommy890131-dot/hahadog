@@ -66,7 +66,7 @@ export class MetroScene {
       block(x,3.7,z+.1,5,.18,.13,yellow);
     }
     // Visible service consoles at the exact authoritative trigger positions.
-    for(const [x,z] of [[-32,-19],[-10,-22],[54,-16]] as const){
+    for(const [x,z] of [[-32,-19],[-10,-22],[54,-16],[-59,-18]] as const){
       block(x,.9,z,.9,1.8,.55,paint);
       block(x,1.62,z-.05,.68,.37,.12,red);
     }
