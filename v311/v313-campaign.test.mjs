@@ -78,7 +78,7 @@ test('two maps share multiplayer room protocol but render distinct scenes and le
   const mini=source('apps/client/src/world/MapMini.ts');
   assert.match(server,/room\.mapId=V311\?\(\['city',METRO_MAP_ID,'infected_hospital','doomed_harbor'\]/);
   assert.match(server,/msg\.type==='selectMap'/);
-  assert.match(server,/metroMoveHorizontal\(p\.x,p\.z/);
+  assert.match(server,/moveRoomPlayer\(room,p\.x,p\.z,p\.y,dx,dz,p\.grounded\)/);
   assert.match(server,/metroExtractionZone\(room\.protocol,p,now\)/);
   assert.match(server,/metroFlowField\(p\)/);
   assert.match(main,/world\.setChapter\(event\.mapId/);
